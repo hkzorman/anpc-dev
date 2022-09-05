@@ -4,6 +4,7 @@
 # Please don't use this as an example of good Python code :)
 
 import logging
+import os
 import re
 import sys
 
@@ -38,18 +39,64 @@ def generate_boolean_expression(bool_expr):
 		return bool_expr[4:]
 		
 	result = '{left = "'
-	expr_parts = re.split(r'(==|<|>|<=|>=|~=)', bool_expr)
-	if len(expr_parts) != 3:
-		logging.error(f'Malformed boolean expression: {bool_expr}')
-		return
-
-	result += expr_parts[0].strip()
-	result += '", op = "'
-	result += expr_parts[1].strip()
-	result += '", right = '
-	result += expr_parts[2].strip()
-	result += '}'
+	
+	parenthesis = []
+	operators = []
+	operands = []
+	
+	expr_parts = re.split(r'(\(|\)|\s+)', bool_expr)
+	i = 0
+	subexpr = ""
+	while i < len(expr_parts):
+		part = expr_parts[i]
+		if not part:
+			continue
+			
+		if part == "(":
+			parenthesis.append(part)
+		elif part == ")":
+			last_parenthesis = parenthesis.pop()
+			if last_parenthesis != "(":
+				logging.error("Unmatched parenthesis")
+				
+			right = operands.pop()
+			op = operators.pop()
+			left = operands.pop()
+			
+			 generate_expression(left, right, op)
+		elif is_operator(part):
+			operators.append(part)
+		else:
+			operands.append()
+		
+		i = i + 1
+			
 	return result
+	
+def generate_expression(left, right, op):
+
+
+	result = '{left = "'
+	result += left
+	result += '", op = "'
+	result += op
+	result += '", right = '
+	result += right
+	result += '}'
+	
+	return result
+
+def is_parenthesis(s):
+	if s == "(" or s == ")":
+		return True
+	return False
+
+def is_operator(s):
+	if s == "==" or s == "~=" or s == "<" or s == ">" or s == "<=" or s == ">=" \
+	or s == "+" or s == "-" or s == "*" or s == "/" or s == "%" \
+	or s == "&" or s == "|" or s == "&&" or s == "||":
+		return True
+	return False
 
 
 ###################################################################
@@ -93,7 +140,7 @@ def parse_instruction(line, nesting, result):
 ###################################################################
 ## File parsers
 ###################################################################
-def parse_file(lines):
+def parse_file(filename, debug, lines):
 	result = []
 	program_names = []
 
@@ -116,7 +163,7 @@ def parse_file(lines):
 					lua_code_lines = parse_instructions(program_lines, 1)
 					for k in range(len(lua_code_lines)):
 						result.append(f'{lua_code_lines[k]}{"," if k < len(lua_code_lines) - 1 else ""}')
-					result.append("})\n")
+					result.append(f'}}, "{filename}")\n' if debug == True else "})\n")
 
 					logging.info(f'Successfully parsed program "{program_name}" ({j-i-1} lines of code)')
 					i = i + j
@@ -235,11 +282,11 @@ def parse_instructions(lines, nesting):
 ## Main
 ###################################################################
 def main():
-	if len(sys.argv) != 3:
+	if len(sys.argv) < 3:
 		print("anpcscript-interpreter.py v1.0")
 		print("This python script converts a anpc-script file into Lua code")
 		print("understandable by the anpc Minetest mod\n")
-		print('Usage: "python3 anpcscript-interpreter.py <input-file> <output-file>"\n')
+		print('Usage: "python3 anpcscript-interpreter.py <input-file> <output-file> <enable-debug=false>"\n')
 		sys.exit(0)
 
 	lines = []
@@ -252,7 +299,14 @@ def main():
 
 	logging.info(f'Successfully parsed file "{input_name}" generating {len(lines)} lines of Lua code')
 
-	lua_code = parse_file(lines)
+	# Enable debug mode if flag is on
+	debug = False
+	input_full_path = ""
+	if "--enable-debug" in sys.argv:
+		input_full_path = f'{os.path.join(os.getcwd(), input_name)}'
+		debug = True
+
+	lua_code = parse_file(input_full_path, debug, lines)
 	logging.info(f'Writing Lua file at "{output_name}"')
 	with open(output_name, "w") as file:
 		for i in range(len(lua_code)):
