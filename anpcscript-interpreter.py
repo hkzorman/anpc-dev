@@ -34,62 +34,78 @@ def generate_arguments_for_instruction(args_str):
 		
 	return result + "}"
 
-def generate_boolean_expression(bool_expr):
-	if bool_expr[:4] == "lua:":
-		return bool_expr[4:]
+
+def process_expression(expr):
+	# If expression is a lua function, return function
+	if expr[:4] == "lua:":
+		return expr[4:]
 		
-	result = '{left = "'
+	# If expression contains an arithmetic character, process
+	if re.search(r'(==|!=|<|>|<=|>=|\+|-|\*|/|%|&&|\|\|)', expr, re.I|re.M):
+		expr_parts = re.split(r'(\(|\)|\s+)', expr)
+		return generate_expression(expr_parts)
+		
+	# Else just return whatever we were given
+	return expr
+
 	
+def generate_expression(parts):
 	parenthesis = []
 	operators = []
 	operands = []
 	
-	expr_parts = re.split(r'(\(|\)|\s+)', bool_expr)
 	i = 0
-	subexpr = ""
-	while i < len(expr_parts):
-		part = expr_parts[i]
+	subexpr_start = -1
+	while i < len(parts):
+		part = parts[i].strip()
 		if not part:
+			i = i + 1
 			continue
-			
+
 		if part == "(":
 			parenthesis.append(part)
+			if len(parenthesis) == 1:
+				subexpr_start = i
 		elif part == ")":
 			last_parenthesis = parenthesis.pop()
 			if last_parenthesis != "(":
-				logging.error("Unmatched parenthesis")
-				
-			right = operands.pop()
-			op = operators.pop()
-			left = operands.pop()
+				logging.error(f'Unmatched parenthesis found on expression: {"".join(parts)}')
 			
-			 generate_expression(left, right, op)
-		elif is_operator(part):
+			print(parenthesis)
+			if len(parenthesis) == 0:
+				expr_operand = generate_expression(parts[subexpr_start+1:i])
+				operands.append(expr_operand)
+				subexpr_start = -1
+		elif is_operator(part) and subexpr_start < 0:
 			operators.append(part)
-		else:
-			operands.append()
+		elif subexpr_start < 0:
+			operands.append(part)
+		
+		if len(operands) == 2 and len(operators) == 1:
+			right = operands.pop()
+			left = operands.pop()
+			op = operators.pop()
+			
+			if left[0] == "@":
+				left = f'"{left}"'
+				
+			if right[0] == "@":
+				right = f'"{right}"'
+					
+			result = '{left = '
+			result += left
+			result += ', op = "'
+			result += op
+			result += '", right = '
+			result += right
+			result += '}'
+			
+			return result
 		
 		i = i + 1
 			
 	return result
-	
-def generate_expression(left, right, op):
 
-
-	result = '{left = "'
-	result += left
-	result += '", op = "'
-	result += op
-	result += '", right = '
-	result += right
-	result += '}'
-	
-	return result
-
-def is_parenthesis(s):
-	if s == "(" or s == ")":
-		return True
-	return False
 
 def is_operator(s):
 	if s == "==" or s == "~=" or s == "<" or s == ">" or s == "<=" or s == ">=" \
@@ -124,6 +140,7 @@ def parse_variable_assignment(line, line_number, nesting, result):
 		args_str = assignment_expr[parenthesis_start + 1:parenthesis_end]
 		result.append((nesting*"\t") + f'{{key = "{variable_name}", name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
 	else:
+		assignment_expr = process_expression(assignment_expr)
 		result.append((nesting*"\t") + f'{{name = "npc:var:set", args = {{key = "{variable_name}", value = {assignment_expr}}}}}')
 
 # This function parses a line where a single instruction is contained
@@ -201,12 +218,26 @@ def parse_instructions(lines, nesting):
 			# Find the start for the control instruction
 			control_start_instr = re.search(r'(do|then)', line, re.M|re.I).group(0).strip()
 			# Find the boolean expression
-			bool_expr_str = ""
+			args_prefix_str = ""
 			parenthesis_start = line.find("(")
 			parenthesis_end = re.search(r'\)\s*(do|then)$', line, re.M|re.I).span()[0]
 			if parenthesis_start > -1 and parenthesis_end > -1 and parenthesis_end > parenthesis_start:
 				bool_expr_str = line[parenthesis_start+1:parenthesis_end]
-				bool_expr_str = generate_boolean_expression(bool_expr_str)
+				if control_instr == "for":
+					# For the for loop, the step increase is optional
+					parts = bool_expr_str.split(";")
+					initial_value = process_expression(parts[0])
+					step_increase = 1
+					if len(parts) == 3:
+						step_increase = process_expression(parts[2])
+						
+					args_prefix_str = "{initial_value = " \
+					+ initial_value + ", step_increase = " \
+					+ step_increase + ", expr = " \
+					+ process_expression(parts[1])
+				else:
+					bool_expr_str = process_expression(bool_expr_str)
+					args_prefix_str = "{expr = " + bool_expr_str
 				
 			# Find all instructions that are part of the control
 			# For 'if', we need to search for an else as well.
@@ -250,7 +281,7 @@ def parse_instructions(lines, nesting):
 			
 			instructions_name = "true_instructions" if control_instr == "if" else "loop_instructions"
 			loop_instr = (nesting*"\t") + '{name = "npc:' + control_instr \
-			+ '", args = {expr = ' + bool_expr_str + ', ' + instructions_name \
+			+ '", ' + args_prefix_str + ', ' + instructions_name \
 			+ ' = {\n' + ",\n".join(processed_loop_instrs) + '\n' + (nesting*"\t") + '}'
 			
 			if processed_false_instrs:

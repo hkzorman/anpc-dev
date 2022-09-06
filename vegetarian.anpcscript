@@ -1,3 +1,30 @@
+
+define program vegetarian:init
+	vegetarian:set_hunger(value = 0)
+end
+
+define program vegetarian:idle
+	npc:move:stand()
+	vegetarian:set_hunger(value = @global.hunger + 2)
+	
+	if (@global.hunger >= 60) then
+		npc:set_state_process(name = "vegetarian:feed")
+	end
+	
+	if (@time >= 20000)
+		npc:execute(name = "vegetarian:sleep")
+	end
+	
+	for (1; @local.for_index <= lua:function(self, args) return #self.data.env.objects end; 1) do
+		@local.nearby_obj = false
+		@local.chance = @random.1.100
+		if (@local.chance >= (100 - @args.ack_nearby_objs_chance)) then
+			
+			
+end
+
+
+
 define program test
     @local.pos0 = somegarbage(pos = @local.garb, avoid_g = true, donot_care = @local.garbage)
     @local.pos1 = "a"

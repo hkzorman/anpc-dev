@@ -1,7 +1,21 @@
+npc.proc.register_program("vegetarian:init", {
+	{name = "vegetarian:set_hunger", args = {value = 0}}
+})
+
+npc.proc.register_program("vegetarian:idle", {
+	{name = "npc:move:stand", args = {}},
+	{name = "vegetarian:set_hunger", args = {value = "@global.hunger + 2"}},
+	{name = "npc:if", args = {expr = {left = "@global.hunger", op = ">=", right = 60}, true_instructions = {
+		{name = "npc:set_state_process", args = {name = "vegetarian:feed"}}
+	},
+	{name = "if ", args = {@time > = 20000}},
+	{name = "npc:execute", args = {name = "vegetarian:sleep"}}
+})
+
 npc.proc.register_program("test", {
 	{key = "@local.pos", name = "somegarbage", args = {pos = "@local.garb", avoid_g = true, donot_care = "@local.garbage"}},
 	{name = "npc:var:set", args = {key = "@local.pos", value = "a"}},
-	{name = "npc:var:set", args = {key = "@local.pos", value = @local.pos1 + 1}},
+	{name = "npc:var:set", args = {key = "@local.pos", value = {left = "@local.pos1", op = "+", right = 1}}},
 	{name = "npc:var:set", args = {key = "@local.pos", value = true}},
 	{name = "npc:if", args = {expr = {left = "@local.nonsense", op = "==", right = "g"}, true_instructions = {
 		{name = "executenonsense", args = {nonsense = "@local.nonsense"}}
@@ -17,12 +31,12 @@ npc.proc.register_program("test", {
 		}
 	},
 	{name = "hahahahahaha", args = {}}
-}, "/home/hfranqui/minetest/mods/anpc_dev/vegetarian.anpcscript")
+})
 
 npc.proc.register_program("feed", {
 	{name = "npc:var:set", args = {key = "@local.do_something", value = false}},
 	{name = "npc:while", args = {expr = {left = "@local.do_something", op = "==", right = true}, loop_instructions = {
 		{name = "nothing_at_all", args = {something = false}}
 	}
-}, "/home/hfranqui/minetest/mods/anpc_dev/vegetarian.anpcscript")
+})
 
