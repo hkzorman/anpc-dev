@@ -70,8 +70,8 @@ def generate_expression(parts):
 			last_parenthesis = parenthesis.pop()
 			if last_parenthesis != "(":
 				logging.error(f'Unmatched parenthesis found on expression: {"".join(parts)}')
+				sys.exit(1)
 			
-			print(parenthesis)
 			if len(parenthesis) == 0:
 				expr_operand = generate_expression(parts[subexpr_start+1:i])
 				operands.append(expr_operand)
@@ -133,9 +133,9 @@ def parse_variable_assignment(line, line_number, nesting, result):
 	assignment_expr = assignment.group(0)[2:]
 	
 	# Check if the assigned value is an instruction
-	parenthesis_start = assignment_expr.find("(")
-	parenthesis_end = assignment_expr.find(")")
-	if parenthesis_start > -1 and parenthesis_end > -1 and parenthesis_end > parenthesis_start:
+	if re.search(r'[a-zA-Z0-9:_]+\(.*\)', assignment_expr, re.I|re.M):
+		parenthesis_start = assignment_expr.find("(")
+		parenthesis_end = assignment_expr.find(")")
 		instr_name = assignment_expr[:parenthesis_start]
 		args_str = assignment_expr[parenthesis_start + 1:parenthesis_end]
 		result.append((nesting*"\t") + f'{{key = "{variable_name}", name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
@@ -224,16 +224,16 @@ def parse_instructions(lines, nesting):
 			if parenthesis_start > -1 and parenthesis_end > -1 and parenthesis_end > parenthesis_start:
 				bool_expr_str = line[parenthesis_start+1:parenthesis_end]
 				if control_instr == "for":
-					# For the for loop, the step increase is optional
+					# The step increase is optional, defaults to 1
 					parts = bool_expr_str.split(";")
 					initial_value = process_expression(parts[0])
 					step_increase = 1
 					if len(parts) == 3:
 						step_increase = process_expression(parts[2])
 						
-					args_prefix_str = "{initial_value = " \
-					+ initial_value + ", step_increase = " \
-					+ step_increase + ", expr = " \
+					args_prefix_str = '{initial_value = ' + str(initial_value) \
+					+ ', step_increase = ' + str(step_increase) \
+					+ ', expr = ' \
 					+ process_expression(parts[1])
 				else:
 					bool_expr_str = process_expression(bool_expr_str)
@@ -248,31 +248,44 @@ def parse_instructions(lines, nesting):
 				sub_line = lines[j].strip()
 				logging.debug("subline: " + sub_line)
 				
+				other_control_instr = re.search(r'^\s*(for|while|if)\s*\(.*', sub_line, re.I|re.M)
+				if other_control_instr:
+					instr = re.search(r'(for|if|while)', sub_line, re.I|re.M)
+					control_stack.append(instr.group(0))
+				
 				else_instr = re.search(r'\s*else\s*', sub_line, re.M|re.I)
 				if else_instr:
 					last_control = control_stack.pop()
 					if last_control != "if":
 						logging.error(f'Found "else" keyword without corresponding "if" at: line {i+j+1}')
 						sys.exit(1)
-					control_stack.append("else")
-					else_index = j
+
 					# These are the true_instructions
-					loop_instructions = lines[i+1:j+1]
-					continue
+					if len(control_stack) == 0:
+						control_stack.append("else")
+						loop_instructions = lines[i+1:j+1]
+						else_index = j
+						continue
+
 				end_instr = re.search(r'\s*end\s*', sub_line, re.M|re.I)
 				if end_instr:
 					last_control = control_stack.pop()
-					if last_control == "else":
+					if last_control == "else" and len(control_stack) == 0:
 						# These are the false instructions
 						false_instructions = lines[else_index+1:j+1]
-					else:
+					elif len(control_stack) == 0:
 						# These are the true/loop instructions
 						loop_instructions = lines[i+1:j+1]
-					# Increase counter to avoid processing lines which are inside controls
-					logging.debug(f"Old i: {i}")
-					i = j
-					logging.debug(f"New i: {i}")
-					break
+						
+					if len(control_stack) == 0:
+						# Increase counter to avoid processing lines which are inside controls
+						logging.debug(f"Old i: {i}")
+						i = j
+						logging.debug(f"New i: {i}")
+						break
+					elif j == len(lines) - 1 and len(control_stack) > 0:
+						logging.error('Expected "end", but reached EOF')
+						sys.exit(1)
 			# Now, process all the instructions that we found
 			if not loop_instructions:
 				logging.warning(f'Found control structure "{control_instr}" without any instructions at: line {j+1}')

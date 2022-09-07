@@ -1,56 +1,41 @@
 
 define program vegetarian:init
-	vegetarian:set_hunger(value = 0)
+	@global.hunger = 0
 end
 
 define program vegetarian:idle
 	npc:move:stand()
-	vegetarian:set_hunger(value = @global.hunger + 2)
+	@global.hunger = @global.hunger + 2
 	
 	if (@global.hunger >= 60) then
 		npc:set_state_process(name = "vegetarian:feed")
 	end
 	
-	if (@time >= 20000)
+	if (@time >= 20000) then
 		npc:execute(name = "vegetarian:sleep")
 	end
-	
-	for (1; @local.for_index <= lua:function(self, args) return #self.data.env.objects end; 1) do
-		@local.nearby_obj = false
-		@local.chance = @random.1.100
-		if (@local.chance >= (100 - @args.ack_nearby_objs_chance)) then
-			
-			
-end
 
-
-
-define program test
-    @local.pos0 = somegarbage(pos = @local.garb, avoid_g = true, donot_care = @local.garbage)
-    @local.pos1 = "a"
-    @local.pos2 = @local.pos1 + 1
-    @local.pos3 = true
-    if (@local.nonsense == "g") then
-        executenonsense(nonsense = @local.nonsense)
-    else
-    	executesense()
-    end
-    
-    while (lua:function(self, args) return minetest.get_time_of_day() == 2000 end) do
-        haha()
-        if (@local.pos == "a") then    
-			hahahaha()
-			break
+	@local.should_ack_obj = false
+	for (1; @local.for_index <= @table.length.@objs.all; 1) do
+		if (@random.1.100 >= (100 - @args.ack_nearby_objs_chance)) then
+			@local.obj = @objs.@local.for_index
+			if (@local.obj ~= nil) then
+				@local.dist = npc:distance_to(object = @local.obj)
+				@local.should_ack_obj = (@local.dist <= @args.ack_nearby_objs_dist) && (@local.dist > 0)
+			end
 		end
 		
-        hahahahahaha()
-    end
+		if (@local.should_ack_obj == true) then
+			for (1; @local.for_index <= @random.15.30; 1) do
+				@local.obj_pos = npc:obj:get_pos(object = @local.obj)
+				npc:move:rotate(target_pos = @loca.obj_pos)
+			end
+			break
+		else
+			if (@random.1.10 <= 2) then
+				npc:move:walk(cardinal_pos = @random.1.7)
+				npc:move:stand()
+			end
+		end
+	end
 end
-
-define program feed
-    @local.do_something = false
-    while (@local.do_something == true) do
-        nothing_at_all(something = false)
-    end
-end
-
