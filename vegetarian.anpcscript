@@ -39,3 +39,23 @@ define program vegetarian:idle
 		end
 	end
 end
+
+define program vegetarian:sleep
+	@local.bed_pos = npc:env:node:find(matches = "single", radius = 35, nodenames = {"beds:bed_bottom"})
+	if (@local.bed_pos ~= nil) then
+		npc:execute(name = "builtin:walk_to_pos", args = {end_pos = "@local.bed_pos"})
+		npc:env:node:operate(pos = @local.bed_pos)
+		while (((@time > 20000) && (time < 24000)) || (time < 6000))) do
+			npc:wait(time = 30)
+		end
+		@global.hunger = 60
+		npc:set_state_process(name = "vegetarian:idle", args = {ack_nearby_objs = true, ack_nearby_objs_dist = 4, ack_nearby_objs_chance = 50})
+	end
+end
+
+define program vegetarian:feed
+	@local.nodes = npc:env:node:find(radius = 5, nodenames = {"default:grass_1", "default:grass_2", "default:grass_3", "default:grass_4", "default:grass_5"})
+	if (@local.nodes > 0) then
+		@local.index = @random1.#
+		@local.chosen_node = 
+end

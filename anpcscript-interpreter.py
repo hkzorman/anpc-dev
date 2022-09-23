@@ -13,43 +13,106 @@ logging.basicConfig(level=logging.INFO)
 ###################################################################
 ## Helper functions
 ###################################################################
+def escape_lua_keyword(key_str):
+	if re.search(r'^(end|else|if|for|and|or)$', key_str, re.M|re.I):
+		return f'["{key_str}"]'
+	return key_str
+
+def find_key_value_pairs(args_str):
+	keyvalue_pairs = []
+	prev_comma = 0
+	brace_stack = []
+	for i in range(len(args_str)):
+		if args_str[i] == "," and len(brace_stack) == 0:
+			keyvalue_pairs.append(args_str[prev_comma:i].strip())
+			print("Found a , arg: " + args_str[prev_comma:i+1])
+			prev_comma = i + 1
+		elif args_str[i] == "{":
+			brace_stack.append(args_str[i])
+		elif args_str[i] == "}":
+			last_brace = brace_stack.pop()
+			if last_brace != "{":
+				logging.error('Found unmatching "}", but no respective "{" found at: "' + args_str + '"') 
+				sys.exit(1)
+			if len(brace_stack) == 0:
+				keyvalue_pairs.append(args_str[prev_comma:i+1].strip())
+				print("Found a { arg: " + args_str[prev_comma:i+1])
+	
+	keyvalue_pairs.append(args_str[prev_comma:])
+	
+	return keyvalue_pairs
+
+def decorate_value(value_str):
+	result = value_str
+	if value_str[0] == "@":
+		result = f'"{value_str}"'
+		
+	# If we find something like this: "{key1 = val1, key2 = val2, ...}"
+	# then we need to process
+	print("Decorate given value: " + value_str[1:len(value_str)-1])
+	if value_str.find("=") > -1:
+		result = "{"
+		sub_keyvalue_pairs = find_key_value_pairs(value_str[1:len(value_str)-1])
+		print("Sub kv")
+		print(sub_keyvalue_pairs)
+		for i in range(len(sub_keyvalue_pairs)):
+			parts = sub_keyvalue_pairs[i].split("=", 1)
+			print("PARTS:")
+			print(parts)
+			key = escape_lua_keyword(parts[0].strip())
+			print("This is the key: " + key)
+			if key == "end":
+				key = f'"end"'
+			value = decorate_value(parts[1].strip())
+			result = result + key + " = " + value
+			if i < len(sub_keyvalue_pairs) - 1:
+				result = result + ", "
+		print("GGGGGGGGGGGGGGG")
+		print(sub_keyvalue_pairs)
+		result = result + "}"
+		
+	return result
+
 def generate_arguments_for_instruction(args_str):
 	result = "{"
-	if not args_str.strip():
+	args_str = args_str.strip()
+	if not args_str:
 		return "{}"
-
-	keyvalue_pairs = args_str.split(",")
+		
+	keyvalue_pairs = find_key_value_pairs(args_str)
+	
 	pairs_count = len(keyvalue_pairs)
 	for i in range(pairs_count):
-		key_value = keyvalue_pairs[i].split("=")
-		key = key_value[0].strip()
-		value = key_value[1].strip()
-
-		if value[0] == "@":
-			value = f'"{value}"'
+		key_value = keyvalue_pairs[i].split("=", 1)
+		key = escape_lua_keyword(key_value[0].strip())
+		value = decorate_value(key_value[1].strip())
 
 		result = result + key + " = " + value
+
 		if i < pairs_count - 1:
 			result = result + ", "
 		
 	return result + "}"
 
 
-def process_expression(expr):
+def process_expression(expr, inline_instructions):
 	# If expression is a lua function, return function
 	if expr[:4] == "lua:":
 		return expr[4:]
 		
 	# If expression contains an arithmetic character, process
-	if re.search(r'(==|!=|<|>|<=|>=|\+|-|\*|/|%|&&|\|\|)', expr, re.I|re.M):
+	if re.search(r'(==|~=|<|>|<=|>=|\+|-|\*|/|%|&&|\|\|)', expr, re.I|re.M):
 		expr_parts = re.split(r'(\(|\)|\s+)', expr)
-		return generate_expression(expr_parts)
-		
-	# Else just return whatever we were given
-	return expr
+		return generate_expression(expr_parts, inline_instructions)
+
+	# Else we checkjust return whatever we were given
+	if re.search(r'[0-9]+', expr, re.I|re.M):
+		return expr
+	else:
+		return '"' + expr + '"'
 
 	
-def generate_expression(parts):
+def generate_expression(parts, inline_instructions):
 	parenthesis = []
 	operators = []
 	operands = []
@@ -61,7 +124,7 @@ def generate_expression(parts):
 		if not part:
 			i = i + 1
 			continue
-
+			
 		if part == "(":
 			parenthesis.append(part)
 			if len(parenthesis) == 1:
@@ -73,13 +136,39 @@ def generate_expression(parts):
 				sys.exit(1)
 			
 			if len(parenthesis) == 0:
-				expr_operand = generate_expression(parts[subexpr_start+1:i])
+				expr_operand = generate_expression(parts[subexpr_start+1:i], inline_instructions)
 				operands.append(expr_operand)
 				subexpr_start = -1
 		elif is_operator(part) and subexpr_start < 0:
 			operators.append(part)
 		elif subexpr_start < 0:
-			operands.append(part)
+			#if re.search(r'[a-zA-Z0-9:_]+\(.*\)', part, re.I|re.M):
+			if re.search(r'[a-zA-Z0-9]+:[a-zA-Z0-9]+', part, re.I|re.M):
+				index = len(inline_instructions)
+				operands.append(f'@local._inline{index}')
+				
+				# Find all arguments: notice that arguments *cannot* be instructions
+				instr_args = "{"
+				k = i + 1
+				while k < len(parts):
+					sub_part = parts[k]
+					if re.search(r'(end|else|if|for|and|or)', sub_part, re.M|re.I) and k < len(parts) - 2 and (parts[k + 1] == "=" or parts[k + 2] == "="):
+						sub_part = f'["{sub_part}"]'
+					if not sub_part or sub_part == "(":
+						k = k + 1
+						continue
+					if sub_part == ")":
+						break
+					
+					instr_args = instr_args + sub_part
+					k = k + 1
+				instr_args = instr_args + "}"
+				
+				i = k
+				inline_instructions.append(f'{{key = "@local._inline{index}", name = "{part}", args = {instr_args}}}')
+				logging.debug(f'Found inline instruction "{part}" with args: {instr_args}') 
+			else:
+				operands.append(part)
 		
 		if len(operands) == 2 and len(operators) == 1:
 			right = operands.pop()
@@ -119,6 +208,7 @@ def is_operator(s):
 ## Single-line parsers
 ###################################################################
 # This function parses a line where a variable assignment is contained
+# TODO: Add support for inline functions inside args for instructions
 def parse_variable_assignment(line, line_number, nesting, result):
 	variable = re.search(r'@[a-z]*.[a-z_]*', line, re.I)
 	if not variable:
@@ -128,7 +218,23 @@ def parse_variable_assignment(line, line_number, nesting, result):
 	if not assignment:
 		logging.error(f"Error on line {line_number}: expected assignment to variable {variable.group(0)}")
 
-	variable_name = variable.group(0)
+	# Parse the variable expression. This could be of the type:
+	# @<storage_type>.<var_name>[<table_key>]
+	variable_expr = variable.group(0)
+	storage_type = ""
+	var_name = ""
+	table_key = ""
+	if variable_expr[0] == "@":
+		parts = variable_expr.split(".")
+		storage_type = parts[0][1:] # Don't include the @
+		index_bracket_open = parts[1].find("[")
+		if index_bracket_open > -1:
+			index_bracket_close = variable_expr.find("]")
+			table_key = variable_expr[index_bracket_open + 1:index_bracket_close]
+			var_name = parts[1][0:index_bracket_open]
+		else:
+			var_name = parts[1]
+
 	# Remove '= ' from assignment match
 	assignment_expr = assignment.group(0)[2:]
 	
@@ -138,10 +244,14 @@ def parse_variable_assignment(line, line_number, nesting, result):
 		parenthesis_end = assignment_expr.find(")")
 		instr_name = assignment_expr[:parenthesis_start]
 		args_str = assignment_expr[parenthesis_start + 1:parenthesis_end]
-		result.append((nesting*"\t") + f'{{key = "{variable_name}", name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
+		result.append((nesting*"\t") + f'{{key = "{variable_expr}", name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
 	else:
-		assignment_expr = process_expression(assignment_expr)
-		result.append((nesting*"\t") + f'{{name = "npc:var:set", args = {{key = "{variable_name}", value = {assignment_expr}}}}}')
+		extra_instructions = []
+		assignment_expr = process_expression(assignment_expr, extra_instructions)
+		if len(extra_instructions) > 0:
+			for k in range(len(extra_instructions)):
+				result.append((nesting*"\t") + extra_instructions[k])
+		result.append((nesting*"\t") + f'{{name = "npc:var:set", args = {{key = "{var_name}", value = {assignment_expr}, storage_type = "{storage_type}"}}}}')
 
 # This function parses a line where a single instruction is contained
 def parse_instruction(line, nesting, result):
@@ -219,25 +329,31 @@ def parse_instructions(lines, nesting):
 			control_start_instr = re.search(r'(do|then)', line, re.M|re.I).group(0).strip()
 			# Find the boolean expression
 			args_prefix_str = ""
+			bool_expr_str = ""
+			step_increase = 0
+			initial_value = 0
 			parenthesis_start = line.find("(")
 			parenthesis_end = re.search(r'\)\s*(do|then)$', line, re.M|re.I).span()[0]
+			extra_instructions = []
 			if parenthesis_start > -1 and parenthesis_end > -1 and parenthesis_end > parenthesis_start:
 				bool_expr_str = line[parenthesis_start+1:parenthesis_end]
+				extra_instructions = []
 				if control_instr == "for":
 					# The step increase is optional, defaults to 1
 					parts = bool_expr_str.split(";")
-					initial_value = process_expression(parts[0])
+					initial_value = process_expression(parts[0].strip(), extra_instructions)
 					step_increase = 1
 					if len(parts) == 3:
-						step_increase = process_expression(parts[2])
-						
-					args_prefix_str = '{initial_value = ' + str(initial_value) \
-					+ ', step_increase = ' + str(step_increase) \
-					+ ', expr = ' \
-					+ process_expression(parts[1])
+						step_increase = process_expression(parts[2].strip(), extra_instructions)
+					
+					
+					bool_expr_str = process_expression(parts[1], extra_instructions)
 				else:
-					bool_expr_str = process_expression(bool_expr_str)
-					args_prefix_str = "{expr = " + bool_expr_str
+					bool_expr_str = process_expression(bool_expr_str, extra_instructions)
+					
+				if len(extra_instructions) > 0:
+					for k in range(len(extra_instructions)):
+						result.append((nesting*"\t") + extra_instructions[k])
 				
 			# Find all instructions that are part of the control
 			# For 'if', we need to search for an else as well.
@@ -253,11 +369,11 @@ def parse_instructions(lines, nesting):
 					instr = re.search(r'(for|if|while)', sub_line, re.I|re.M)
 					control_stack.append(instr.group(0))
 				
-				else_instr = re.search(r'\s*else\s*', sub_line, re.M|re.I)
+				else_instr = re.search(r'^\s*else\s*$', sub_line, re.M|re.I)
 				if else_instr:
 					last_control = control_stack.pop()
 					if last_control != "if":
-						logging.error(f'Found "else" keyword without corresponding "if" at: line {i+j+1}')
+						logging.error(f'Found "else" keyword without corresponding "if" at: line {j}')
 						sys.exit(1)
 
 					# These are the true_instructions
@@ -267,7 +383,7 @@ def parse_instructions(lines, nesting):
 						else_index = j
 						continue
 
-				end_instr = re.search(r'\s*end\s*', sub_line, re.M|re.I)
+				end_instr = re.search(r'^\s*end\s*$', sub_line, re.M|re.I)
 				if end_instr:
 					last_control = control_stack.pop()
 					if last_control == "else" and len(control_stack) == 0:
@@ -289,19 +405,68 @@ def parse_instructions(lines, nesting):
 			# Now, process all the instructions that we found
 			if not loop_instructions:
 				logging.warning(f'Found control structure "{control_instr}" without any instructions at: line {j+1}')
-			processed_loop_instrs = parse_instructions(loop_instructions, nesting + 1)
-			processed_false_instrs = parse_instructions(false_instructions, nesting + 1)
+			processed_loop_instrs = parse_instructions(loop_instructions, nesting)
+			processed_false_instrs = parse_instructions(false_instructions, nesting)
 			
-			instructions_name = "true_instructions" if control_instr == "if" else "loop_instructions"
-			loop_instr = (nesting*"\t") + '{name = "npc:' + control_instr \
-			+ '", ' + args_prefix_str + ', ' + instructions_name \
-			+ ' = {\n' + ",\n".join(processed_loop_instrs) + '\n' + (nesting*"\t") + '}'
+			# Add the primitive control instructions
+			if control_instr == "if":
+				# Add jump to skip if expression is false
+				offset = 1 if len(processed_false_instrs) > 0 else 0
+				jump_index = len(processed_loop_instrs) + offset
+				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
+					+ ', offset = true, negate = true, pos = ' + str(jump_index) \
+					+ '}}, -- IF [' + str(len(result) + 1) + ']')
+					
+				# Add true instructions
+				for instr in processed_loop_instrs:
+					result.append((nesting*"\t") + instr)
+
+				# Add jump to skip if expression is true
+				if len(processed_false_instrs) > 0:
+					jump_index = len(processed_false_instrs)
+					result.append((nesting*"\t") + '{name = "npc:jump", args = {offset = true, pos = ' \
+						+ str(jump_index) + '}}, -- ELSE [' + str(len(result) + 1) + ']')
+
+					# Add false instructions
+					for instr in processed_false_instrs:
+						result.append((nesting*"\t") + instr)
+
+			elif control_instr == "while":
+				# Add loop instructions
+				loop_start = len(processed_loop_instrs) + 1
+				for instr in processed_loop_instrs:
+					result.append((nesting*"\t") + instr)
+					
+				# Add jump to start of loop if expression is true
+				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
+					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + '}}, -- WHILE end [' + str(len(result) + 1) + ']')
+					
+			elif control_instr == "for":
+				# Add instruction to set for value to initial value
+				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = ' + str(initial_value) + ', storage_type = "local"}}, -- FOR start [' + str(len(result) + 1) + ']')
+				
+				# Add loop instructions
+				loop_start = len(processed_loop_instrs) + 2
+				for instr in processed_loop_instrs:
+					result.append((nesting*"\t") + instr)
+					
+				# Add instruction to increment value of for index
+				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = {left = "@local.for_index", op = "+", right = ' + str(step_increase) + '}, storage_type = "local"}}')
+				
+				# Add jump to go back to start of loop if expression is true
+				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
+					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + '}}, -- FOR end [' + str(len(result) + 1) + ']')
 			
-			if processed_false_instrs:
-				loop_instr = loop_instr + ',\n' + (nesting*"\t") + 'false_instructions = {\n' \
-				+ ",\n".join(processed_false_instrs) + '\n' + (nesting*"\t") + '}'
+			#instructions_name = "true_instructions" if control_instr == "if" else "loop_instructions"
+			#loop_instr = (nesting*"\t") + '{name = "npc:' + control_instr \
+			#+ '", ' + args_prefix_str + ', ' + instructions_name \
+			#+ ' = {\n' + ",\n".join(processed_loop_instrs) + '\n' + (nesting*"\t") + '}'
 			
-			result.append(loop_instr)
+			#if processed_false_instrs:
+			#	loop_instr = loop_instr + ',\n' + (nesting*"\t") + 'false_instructions = {\n' \
+			#	+ ",\n".join(processed_false_instrs) + '\n' + (nesting*"\t") + '}'
+			
+			#result.append(loop_instr + "}}")
 			
 			logging.debug(f'loop: {processed_loop_instrs}')
 			logging.debug(f'false: {processed_false_instrs}')
