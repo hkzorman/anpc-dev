@@ -3,6 +3,12 @@ define program vegetarian:init
 	@global.hunger = 0
 end
 
+define program vegetarian:get_hungry
+	while (true == true) do
+		@global.hunger = @global.hunger + 2
+	end
+end
+
 define program vegetarian:idle
 	npc:move:stand()
 	@global.hunger = @global.hunger + 2
@@ -16,9 +22,9 @@ define program vegetarian:idle
 	end
 
 	@local.should_ack_obj = false
-	for (1; @local.for_index <= @table.length.@objs.all; 1) do
-		if (@random.1.100 >= (100 - @args.ack_nearby_objs_chance)) then
-			@local.obj = @objs.@local.for_index
+	for (1; @local.for_index <= @objs.all.length; 1) do
+		if (npc:random(start = 1, end = 100) >= (100 - @args.ack_nearby_objs_chance)) then
+			@local.obj = @objs.get[@local.for_index]
 			if (@local.obj ~= nil) then
 				@local.dist = npc:distance_to(object = @local.obj)
 				@local.should_ack_obj = (@local.dist <= @args.ack_nearby_objs_dist) && (@local.dist > 0)
@@ -26,14 +32,15 @@ define program vegetarian:idle
 		end
 		
 		if (@local.should_ack_obj == true) then
-			for (1; @local.for_index <= @random.15.30; 1) do
+			for (1; @local.for_index <= npc:random(start = 15, end = 30); 1) do
 				@local.obj_pos = npc:obj:get_pos(object = @local.obj)
-				npc:move:rotate(target_pos = @loca.obj_pos)
+				npc:move:rotate(target_pos = @local.obj_pos)
 			end
 			break
 		else
-			if (@random.1.10 <= 2) then
-				npc:move:walk(cardinal_pos = @random.1.7)
+			if (npc:random(start = 1, end = 10) <= 5) then
+				@local.cardinal_dir = npc:random(start = 0, end = 7)
+				npc:move:walk(cardinal_dir = @local.cardinal_dir)
 				npc:move:stand()
 			end
 		end
@@ -45,7 +52,7 @@ define program vegetarian:sleep
 	if (@local.bed_pos ~= nil) then
 		npc:execute(name = "builtin:walk_to_pos", args = {end_pos = "@local.bed_pos"})
 		npc:env:node:operate(pos = @local.bed_pos)
-		while (((@time > 20000) && (time < 24000)) || (time < 6000))) do
+		while (((@time > 20000) && (@time < 24000)) || (@time < 6000))) do
 			npc:wait(time = 30)
 		end
 		@global.hunger = 60
@@ -56,6 +63,13 @@ end
 define program vegetarian:feed
 	@local.nodes = npc:env:node:find(radius = 5, nodenames = {"default:grass_1", "default:grass_2", "default:grass_3", "default:grass_4", "default:grass_5"})
 	if (@local.nodes > 0) then
-		@local.index = @random1.#
-		@local.chosen_node = 
+		@local.random_index = npc:random(start = 1, end = @local.nodes.length)
+		@local.chosen_node = @local.nodes[@local.random_index]
+		npc:execute(name = "builtin:walk_to_pos", args = {end_pos = @local.chosen_node, force_accessing_node = true})
+		npc:env:node:dig(pos = @local.chosen_node)
+		@global.hunger = @global.hunger - 10
+		if (@global.hunger <= 0) then
+			npc:set_state_process(name = "vegetarian:idle", args = {ack_nearby_objs = true, ack_nearby_objs_dist = 4, ack_nearby_objs_chance = 50})
+		end
+	end
 end
