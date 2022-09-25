@@ -25,7 +25,7 @@ def find_key_value_pairs(args_str):
 	for i in range(len(args_str)):
 		if args_str[i] == "," and len(brace_stack) == 0:
 			keyvalue_pairs.append(args_str[prev_comma:i].strip())
-			print("Found a , arg: " + args_str[prev_comma:i+1])
+			logging.debug("Found a , arg: " + args_str[prev_comma:i+1])
 			prev_comma = i + 1
 		elif args_str[i] == "{":
 			brace_stack.append(args_str[i])
@@ -36,7 +36,7 @@ def find_key_value_pairs(args_str):
 				sys.exit(1)
 			if len(brace_stack) == 0:
 				keyvalue_pairs.append(args_str[prev_comma:i+1].strip())
-				print("Found a { arg: " + args_str[prev_comma:i+1])
+				logging.debug("Found a { arg: " + args_str[prev_comma:i+1])
 	
 	keyvalue_pairs.append(args_str[prev_comma:])
 	
@@ -269,6 +269,10 @@ def parse_file(filename, debug, lines):
 	program_names = []
 
 	for i in range(len(lines)):
+		# If line is a comment just ignore it
+		if re.search(r'^\s*--.*$', lines[i], re.M|re.I):
+			continue
+			
 		if re.search(r'^(define program).*$', lines[i], re.M|re.I):
 			# Found a program definition, now collect all lines inside the program
 			program_name = lines[i].split("define program")[1].strip()
@@ -306,6 +310,11 @@ def parse_instructions(lines, nesting):
 	while (i < lines_count):
 		line = lines[i].strip()
 		logging.debug(f'Line: {lines[i]}, {i}')
+		
+		# If line is a comment just ignore it
+		if re.search(r'^\s*--.*$', lines[i], re.M|re.I):
+			i = i + 1
+			continue
 
 		###################################################################
 		# Check for "variable assignment" line

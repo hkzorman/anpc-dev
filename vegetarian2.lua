@@ -42,9 +42,9 @@ npc.proc.register_program("vegetarian:idle", {
 
 npc.proc.register_program("vegetarian:sleep", {
 	{key = "@local.bed_pos", name = "npc:env:node:find", args = {matches = "single", radius = 35, nodenames = {"beds:bed_bottom"}, nodenames = {"beds:bed_bottom"}}},
-	{name = "npc:jump_if", args = {expr = {left = "@local.bed_pos", op = "~=", right = nil}, offset = true, negate = true, pos = 6}}, -- IF [2],
-		{name = "npc:execute", args = {name = "builtin:walk_to_pos", args = {end_pos = "@local.bed_pos"}, args = {end_pos = "@local.bed_pos"}}},
-		{name = "npc:env:node:operate", args = {pos = "@local.bed_pos"}},
+	{name = "npc:jump_if", args = {expr = {left = "@local.bed_pos.length", op = ">", right = 0}, offset = true, negate = true, pos = 6}}, -- IF [2],
+		{name = "npc:execute", args = {name = "builtin:walk_to_pos", args = {end_pos = "@local.bed_pos[1]"}, args = {end_pos = "@local.bed_pos[1]"}}},
+		{name = "npc:env:node:operate", args = {pos = "@local.bed_pos[1]"}},
 			{name = "npc:wait", args = {time = 30}},
 		{name = "npc:jump_if", args = {expr = {left = {left = {left = "@time", op = ">", right = 20000}, op = "&&", right = {left = "@time", op = "<", right = 24000}}, op = "||", right = {left = "@time", op = "<", right = 6000}}, negate = false, offset = true, pos = -2}}, -- WHILE end [4],
 		{name = "npc:var:set", args = {key = "hunger", value = 60, storage_type = "global"}},

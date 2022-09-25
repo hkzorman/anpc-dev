@@ -9,6 +9,10 @@ define program vegetarian:get_hungry
 	end
 end
 
+-- This program supports the following arguments:
+-- arg1
+-- arg2
+-- arg3
 define program vegetarian:idle
 	npc:move:stand()
 	@global.hunger = @global.hunger + 2
@@ -39,6 +43,8 @@ define program vegetarian:idle
 			break
 		else
 			if (npc:random(start = 1, end = 10) <= 5) then
+				-- While this is only used for the function, in-line instruction args
+				-- are not currently supported
 				@local.cardinal_dir = npc:random(start = 0, end = 7)
 				npc:move:walk(cardinal_dir = @local.cardinal_dir)
 				npc:move:stand()
@@ -49,9 +55,9 @@ end
 
 define program vegetarian:sleep
 	@local.bed_pos = npc:env:node:find(matches = "single", radius = 35, nodenames = {"beds:bed_bottom"})
-	if (@local.bed_pos ~= nil) then
-		npc:execute(name = "builtin:walk_to_pos", args = {end_pos = "@local.bed_pos"})
-		npc:env:node:operate(pos = @local.bed_pos)
+	if (@local.bed_pos.length > 0) then
+		npc:execute(name = "builtin:walk_to_pos", args = {end_pos = @local.bed_pos[1]})
+		npc:env:node:operate(pos = @local.bed_pos[1])
 		while (((@time > 20000) && (@time < 24000)) || (@time < 6000))) do
 			npc:wait(time = 30)
 		end
