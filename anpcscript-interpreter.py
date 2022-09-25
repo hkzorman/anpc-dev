@@ -49,30 +49,26 @@ def decorate_value(value_str):
 		
 	# If we find something like this: "{key1 = val1, key2 = val2, ...}"
 	# then we need to process
-	print("Decorate given value: " + value_str[1:len(value_str)-1])
+	logging.debug("Decorate given value: " + value_str[1:len(value_str)-1])
 	if value_str.find("=") > -1:
 		result = "{"
 		sub_keyvalue_pairs = find_key_value_pairs(value_str[1:len(value_str)-1])
-		print("Sub kv")
-		print(sub_keyvalue_pairs)
+		#print("Sub kv")
+		#print(sub_keyvalue_pairs)
 		for i in range(len(sub_keyvalue_pairs)):
 			parts = sub_keyvalue_pairs[i].split("=", 1)
-			print("PARTS:")
-			print(parts)
+			logging.debug("PARTS:")
+			logging.debug(parts)
 			key = escape_lua_keyword(parts[0].strip())
-			print("This is the key: " + key)
-			if key == "end":
-				key = f'"end"'
 			value = decorate_value(parts[1].strip())
 			result = result + key + " = " + value
 			if i < len(sub_keyvalue_pairs) - 1:
 				result = result + ", "
-		print("GGGGGGGGGGGGGGG")
-		print(sub_keyvalue_pairs)
 		result = result + "}"
 		
 	return result
 
+# TODO: Allow instructions on arguments
 def generate_arguments_for_instruction(args_str):
 	result = "{"
 	args_str = args_str.strip()
@@ -180,7 +176,8 @@ def generate_expression(parts, inline_instructions):
 				
 			if right[0] == "@":
 				right = f'"{right}"'
-					
+			
+			# Generate expression as string
 			result = '{left = '
 			result += left
 			result += ', op = "'
@@ -457,16 +454,6 @@ def parse_instructions(lines, nesting):
 				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
 					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + '}}, -- FOR end [' + str(len(result) + 1) + ']')
 			
-			#instructions_name = "true_instructions" if control_instr == "if" else "loop_instructions"
-			#loop_instr = (nesting*"\t") + '{name = "npc:' + control_instr \
-			#+ '", ' + args_prefix_str + ', ' + instructions_name \
-			#+ ' = {\n' + ",\n".join(processed_loop_instrs) + '\n' + (nesting*"\t") + '}'
-			
-			#if processed_false_instrs:
-			#	loop_instr = loop_instr + ',\n' + (nesting*"\t") + 'false_instructions = {\n' \
-			#	+ ",\n".join(processed_false_instrs) + '\n' + (nesting*"\t") + '}'
-			
-			#result.append(loop_instr + "}}")
 			
 			logging.debug(f'loop: {processed_loop_instrs}')
 			logging.debug(f'false: {processed_false_instrs}')
