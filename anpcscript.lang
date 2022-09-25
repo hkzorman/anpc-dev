@@ -6,11 +6,9 @@
 -->
 <language id="anpcscript" name="anpc-script" version="2.0" _section="Script">
   <metadata>
-    <property name="mimetypes">text/x-lua</property>
+    <property name="mimetypes"></property>
     <property name="globs">*.anpcscript</property>
-    <property name="line-comment-start">//</property>
-    <property name="block-comment-start">/*</property>
-    <property name="block-comment-end">*/</property>
+    <property name="line-comment-start">--</property>
   </metadata>
 
   <styles>
@@ -26,39 +24,32 @@
   </styles>
 
   <definitions>
-    <context id="lua-escape" style-ref="escape">
+    <!--<context id="lua-escape" style-ref="escape">
       <match>\\(\d{1,3}|a|b|f|n|r|t|u{[0-9a-fA-F]+?}|v|x[0-9a-fA-F]{2}|z|\\|"|'|\[|\])</match>
-    </context>
+    </context>-->
 
-    <context id="label" style-ref="label">
+    <!--<context id="label" style-ref="label">
       <match>\:\:[A-Za-z_][A-Za-z0-9_]*\:\:</match>
-    </context>
+    </context>-->
 
     <context id="string" style-ref="string" end-at-line-end="true" class="string" class-disabled="no-spell-check">
       <start>["']</start>
       <end>\%{0@start}</end>
-      <include>
+      <!--<include>
         <context ref="lua-escape"/>
         <context ref="def:line-continue"/>
-      </include>
-    </context>
-
-    <context id="block-comment" style-ref="comment" class="comment" class-disabled="no-spell-check">
-      <start>--\[(=*)\[</start>
-      <end>]\%{1@start}]</end>
-      <include>
-	<context ref="def:in-comment"/>
-      </include>
+      </include>-->
     </context>
 
     <context id="line-comment" style-ref="comment" end-at-line-end="true" class="comment" class-disabled="no-spell-check">
-      <start>//</start>
+      <start>--</start>
       <include>
 	<context ref="def:in-comment"/>
       </include>
     </context>
 
     <context id="keywords" style-ref="keyword">
+      <keyword>define program</keyword>
       <keyword>break</keyword>
       <keyword>do</keyword>
       <keyword>else</keyword>
@@ -71,38 +62,40 @@
     </context>
 
     <context id="functions" style-ref="function">
-      <keyword>execute</keyword>
-      <keyword>timer:register</keyword>
-      <keyword>timer:start</keyword>
-      <keyword>timer:stop</keyword>
+      <keyword>npc:execute</keyword>
+      <keyword>npc:distance_to</keyword>
+      <keyword>npc:set_state_process</keyword>
+      <keyword>npc:timer:register</keyword>
+      <keyword>npc:timer:start</keyword>
+      <keyword>npc:timer:stop</keyword>
       <!-- Environment instructions -->
-      <keyword>env:node:place</keyword>
-      <keyword>env:node:dig</keyword>
-      <keyword>env:node:operate</keyword>
-      <keyword>env:node:get_property</keyword>
-      <keyword>env:node:can_stand_in</keyword>
-      <keyword>env:node:get_accessing_pos</keyword>
-      <keyword>env:node:find</keyword>
-      <keyword>env:node:is_owner</keyword>
-      <keyword>env:node:is_user</keyword>
-      <keyword>env:node:set_owned</keyword>
-      <keyword>env:node:set_used</keyword>
-      <keyword>env:node:store:add</keyword>
-      <keyword>env:node:store:get</keyword>
-      <keyword>env:node:store:remove</keyword>
-      <keyword>env:find_path</keyword>
-      <keyword>model:set_animation</keyword>
-      <keyword>move:stand</keyword>
-      <keyword>move:rotate</keyword>
-      <keyword>move:to_pos</keyword>
-      <keyword>move:jump</keyword>
-      <keyword>move:walk</keyword>
-      <keyword>move:walk_to_pos</keyword>
+      <keyword>npc:env:node:place</keyword>
+      <keyword>npc:env:node:dig</keyword>
+      <keyword>npc:env:node:operate</keyword>
+      <keyword>npc:env:node:get_property</keyword>
+      <keyword>npc:env:node:can_stand_in</keyword>
+      <keyword>npc:env:node:get_accessing_pos</keyword>
+      <keyword>npc:env:node:find</keyword>
+      <keyword>npc:env:node:is_owner</keyword>
+      <keyword>npc:env:node:is_user</keyword>
+      <keyword>npc:env:node:set_owned</keyword>
+      <keyword>npc:env:node:set_used</keyword>
+      <keyword>npc:env:node:store:add</keyword>
+      <keyword>npc:env:node:store:get</keyword>
+      <keyword>npc:env:node:store:remove</keyword>
+      <keyword>npc:env:find_path</keyword>
+      <keyword>npc:model:set_animation</keyword>
+      <keyword>npc:move:stand</keyword>
+      <keyword>npc:move:rotate</keyword>
+      <keyword>npc:move:to_pos</keyword>
+      <keyword>npc:move:jump</keyword>
+      <keyword>npc:move:walk</keyword>
+      <keyword>npc:move:walk_to_pos</keyword>
     </context>
 
-    <context id="lua-reserved" style-ref="reserved">
+    <!--<context id="lua-reserved" style-ref="reserved">
       <keyword>_[A-Z][A-Za-z0-9_]*</keyword>
-    </context>
+    </context>-->
 
     <context id="nil-value" style-ref="nil-value">
        <keyword>nil</keyword>
@@ -113,19 +106,19 @@
        <keyword>true</keyword>
     </context>
 
-    <context id="lua" class="no-spell-check">
+    <context id="anpcscript" class="no-spell-check">
       <include>
-        <context ref="def:shebang"/>
-        <context ref="multi-line-string"/>
-        <context ref="label"/>
-        <context ref="string"/>
-        <context ref="block-comment"/>
-        <context ref="line-comment"/>
-        <context ref="keywords"/>
-        <context ref="functions"/>
-        <context ref="lua-reserved"/>
-        <context ref="nil-value"/>
-        <context ref="boolean"/>
+        <!--<context ref="def:shebang"/>
+		<context ref="multi-line-string"/>
+		<context ref="label"/>-->
+		<context ref="string"/>
+		<!--<context ref="block-comment"/>-->
+		<context ref="line-comment"/>
+		<context ref="keywords"/>
+		<context ref="functions"/>
+		<!--<context ref="lua-reserved"/>-->
+		<context ref="nil-value"/>
+		<context ref="boolean"/>
       </include>
     </context>
 
