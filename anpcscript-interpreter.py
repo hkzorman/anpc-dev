@@ -144,10 +144,15 @@ def generate_expression(parts, inline_instructions):
 				operands.append(f'@local._inline{index}')
 				
 				# Find all arguments: notice that arguments *cannot* be instructions
+				# TODO: identificate values and decorate them
 				instr_args = "{"
 				k = i + 1
 				while k < len(parts):
 					sub_part = parts[k]
+					# Identify if this is a value and decorate if needed
+					if k > 1 and (parts[k - 1] == "=" or parts[k - 2] == "="):
+						sub_part = decorate_value(sub_part)
+					# Identify if this is a key and escape as needed
 					if re.search(r'(end|else|if|for|and|or)', sub_part, re.M|re.I) and k < len(parts) - 2 and (parts[k + 1] == "=" or parts[k + 2] == "="):
 						sub_part = f'["{sub_part}"]'
 					if not sub_part or sub_part == "(":
