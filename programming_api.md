@@ -1,76 +1,15 @@
-ANPC programming language
+# Programming Reference for `anpc`
+Anpcscript is the programming language for `anpc`. `anpc` takes the idea that NPCs are independent *beings*, able to move and interact with their environment (the Minetest world) in different ways, and over time (and sometimes, **only** over time!). In order for NPCs to execute tasks, `anpc` implements each NPC in a simplified OS-programming model. Therefore, each NPC has:
+* Data storage
+  * Global
+  * For each process
+  * Temporary
+* A process queue
+* Timers
 
-The language will resemble the syntax of assembly language in order to make it simple to parse.
+Therefore, the main concept for creating NPCs with `anpc` are programs, which are created using an instruction set.
 
-Here's an example program:
-```
-npc.proc.register_program("vegetarian:sleep", {
-    {key = "bed_pos", name = "npc:env:node:find", args = {
-        matches = "single",
-        radius = 35,
-        nodenames = {"beds:bed_bottom"}
-    }},
-    {name = "npc:if", args = {
-        expr = {
-        	left  = "@local.bed_pos",
-        	op    = "~=",
-        	right = nil
-        },
-        true_instructions = {
-            {name = "npc:execute", args = {
-                name = "builtin:walk_to_pos",
-                args = {
-                	end_pos = "@local.bed_pos"
-                }
-            }},
-            {name = "npc:env:node:operate", args = {
-            	pos = "@local.bed_pos"
-            }},
-            {name = "npc:while", args = {
-                expr = function(self, args)
-                    local time = 24000 * minetest.get_timeofday()
-                    return (time > 20000 and time < 24000) or (time < 6000)
-                end,
-                loop_instructions = {
-                    {name = "npc:wait", args = {time = 30}}
-                }
-            }},
-            {name = "vegetarian:set_hunger", args = {value = 60}},
-            {name = "npc:set_state_process", args = {
-                name = "vegetarian:idle",
-                args = {
-                    ack_nearby_objs = true,
-    				ack_nearby_objs_dist = 4,
-    				ack_nearby_objs_chance = 50
-                }}
-            }
-        }
-    }}
-})
-```
-
-Here's how the program would like if we wrote it in ANPC-assembly:
-```
-@local.bed_pos = npc:env:node:find -matches="single" -radius=35 -nodenames="beds:bed_bottom"
-if @local.bed_pos ~= nil then
-	npc:execute -name="builtin:walk_to_pos" -args="end_pos=@local.bed_pos"
-	npc:env:node:operate -pos=@local.bed_pos
-	using expresson = "function(self, args); local time = 24000 * minetest.get_timeofday(); return (time > 20000 and time < 24000) or (time < 6000); end"
-	while expression do
-		npc:wait -time=30
-	end
-	
-	vegetarian:set_hunger -value=60
-	npc:set_state_process -name="vegetarian:idle" -args="ack_nearby_objs=true, ack_nearby_objs_dist=4, ack_nearby_objs_chance=50"
-end	
-```
-
-local.bed_pos = env:node:find("single", 35, "beds:bed_bottom")
-if local.bed_pos ~= nil then
-	execute("builtin:walk_to_pos", 
-
-
-
+## Programs
 Programs are made of three basic concepts:
 1. Instructions
 2. Program control
@@ -78,4 +17,34 @@ Programs are made of three basic concepts:
 
 Instructions
 ------------
-Instructions are the basic building block of programs. They are made of Lua code. Their name is usually of the syntax <namespace>:<instruction name>, but after "namespace" there could be more names which actually represent grouping. These are marely conventions are not really needed - the name is just the name. Instructions can receive an arbitrary number of parameters. Some instructions are built-in (and these are named always with "npc" as the namespace) while others can be registered locally.
+Instructions are the basic building block of programs. They are made of Lua code. Their name is usually of the syntax <namespace>:<instruction name>, but after "namespace" there could be more names which actually represent grouping. These are merely conventions and are not really needed - the name is just the name. Instructions can receive an arbitrary number of parameters. Some instructions are built-in (and these are named always with "npc" as the namespace) while others can be registered locally.
+
+Instruction reference:
+----------------------
+This list is exhaustive of all built-in instructions supported.
+
+### Core instructions
+* `npc:execute`
+  * Executes another program
+  * Arguments:
+    * `name`: *string*. Name of the program to be executed. Must be the name of any program that is registered with `npc.proc.register_program`
+    * `args`: *table*. Arguments for the program
+* `npc:wait`
+  * Stop process execution for the desired time. This is not a busy wait, it instead changes the process interval in the right way.
+  * Arguments:
+    * `time`: *number*. The time to wait, in seconds. Decimal values are supported, but it should be taken into account that it should never be smaller than `dtime` (the server's step time). This is not validated.
+
+### Utilities
+* `npc:random`
+  * Returns a random number in the given range. Same as Lua's `math.random`
+  * Arguments:
+    * `start`: *number*. The beginning of the range
+    * `end`: *number*. The end of the range
+* `npc:distance_to`
+  * Returns the distance from the NPC to a given node or object
+  * Arguments:
+    * `pos`: *table, with x, y and z*. If given, will return the distance to the given position. Shouldn't be used together with `object`
+    * `object`: *userdata*. If given, will return distance from NPC to given object at that time. Shouldn't be used together with `pos`
+    * `round`: *boolean*. If given, will round distance value using `vector.round()`
+    
+
