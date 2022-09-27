@@ -18,9 +18,10 @@ define program vegetarian:idle
 	@global.hunger = @global.hunger + 2
 	
 	if (@global.hunger >= 60) then
-		npc:set_state_process(name = "vegetarian:feed")
+		npc:execute(name = "vegetarian:feed")
 	end
 	
+	-- TODO: Replace this with an scheduled event
 	if (@time >= 20000) then
 		npc:execute(name = "vegetarian:sleep")
 	end
@@ -36,46 +37,65 @@ define program vegetarian:idle
 		end
 		
 		if (@local.should_ack_obj == true) then
-			for (1; @local.for_index <= npc:random(start = 15, end = 30); 1) do
+			@local.ack_times = npc:random(start = 15, end = 30)
+			for (1; @local.for_index <= @local.ack_times; 1) do
 				@local.obj_pos = npc:obj:get_pos(object = @local.obj)
 				npc:move:rotate(target_pos = @local.obj_pos)
 			end
+			@global.hunger = @global.hunger + (@local.ack_times * 2)
 			break
 		else
 			if (npc:random(start = 1, end = 10) <= 5) then
-				-- While this is only used for the function, in-line instruction args
-				-- are not currently supported
-				@local.cardinal_dir = npc:random(start = 0, end = 7)
-				npc:move:walk(cardinal_dir = @local.cardinal_dir)
-				npc:move:stand()
+				npc:execute(name = "vegetarian:wander")
 			end
 		end
 	end
+end
+
+-- Super basic wandering program, will take 1-5 steps, 
+-- and will not repeat previous direction
+define program vegetarian:wander
+	@local.prev_dir = -1
+	for (1; @local.for_index < npc:random(start = 1, end = 5); 1) do
+		@local.cardinal_dir = npc:random(start = 0, end = 7)
+		while (@local.cardinal_dir == @local.prev_dir) do
+			@local.cardinal_dir = npc:random(start = 0, end = 7)
+		end
+		@local.prev_dir = @local.cardinal_dir
+		npc:move:walk(cardinal_dir = @local.cardinal_dir)
+	end
+	npc:move:stand()
 end
 
 define program vegetarian:sleep
 	@local.bed_pos = npc:env:node:find(matches = "single", radius = 35, nodenames = {"beds:bed_bottom"})
 	if (@local.bed_pos.length > 0) then
-		npc:execute(name = "builtin:walk_to_pos", args = {end_pos = @local.bed_pos[1]})
+		npc:execute(name = "npc:walk_to_pos", args = {pos = @local.bed_pos[1]})
 		npc:env:node:operate(pos = @local.bed_pos[1])
 		while (((@time > 20000) && (@time < 24000)) || (@time < 6000))) do
 			npc:wait(time = 30)
 		end
 		@global.hunger = 60
-		npc:set_state_process(name = "vegetarian:idle", args = {ack_nearby_objs = true, ack_nearby_objs_dist = 4, ack_nearby_objs_chance = 50})
 	end
 end
 
 define program vegetarian:feed
-	@local.nodes = npc:env:node:find(radius = 5, nodenames = {"default:grass_1", "default:grass_2", "default:grass_3", "default:grass_4", "default:grass_5"})
-	if (@local.nodes > 0) then
-		@local.random_index = npc:random(start = 1, end = @local.nodes.length)
-		@local.chosen_node = @local.nodes[@local.random_index]
-		npc:execute(name = "builtin:walk_to_pos", args = {end_pos = @local.chosen_node, force_accessing_node = true})
-		npc:env:node:dig(pos = @local.chosen_node)
-		@global.hunger = @global.hunger - 10
-		if (@global.hunger <= 0) then
-			npc:set_state_process(name = "vegetarian:idle", args = {ack_nearby_objs = true, ack_nearby_objs_dist = 4, ack_nearby_objs_chance = 50})
+	while (@global.hunger >= 0) do
+		-- Go to sleep even if we are still hungry
+		-- TODO: Replace this with an scheduled event
+		if (((@time > 20000) && (@time <= 24000)) || (@time < 6000)) then
+			exit
+		end
+		
+		@local.nodes = npc:env:node:find(radius = 5, nodenames = {"default:grass_1", "default:grass_2", "default:grass_3", "default:grass_4", "default:grass_5"})
+		if (@local.nodes.length > 0) then
+			@local.random_index = npc:random(start = 1, end = @local.nodes.length)
+			@local.chosen_node = @local.nodes[@local.random_index]
+			npc:execute(name = "npc:walk_to_pos", args = {pos = @local.chosen_node, force_accessing_node = true})
+			npc:env:node:dig(pos = @local.chosen_node)
+			@global.hunger = @global.hunger - 10
+		else
+			npc:execute(name = "vegetarian:wander")
 		end
 	end
 end

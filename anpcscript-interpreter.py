@@ -109,9 +109,13 @@ def process_expression(expr, inline_instructions):
 
 	
 def generate_expression(parts, inline_instructions):
+	print("Parts: " + "".join(parts))
 	parenthesis = []
 	operators = []
 	operands = []
+	
+	if len(parts) == 1:
+		return parts[0]
 	
 	i = 0
 	subexpr_start = -1
@@ -120,7 +124,7 @@ def generate_expression(parts, inline_instructions):
 		if not part:
 			i = i + 1
 			continue
-			
+
 		if part == "(":
 			parenthesis.append(part)
 			if len(parenthesis) == 1:
@@ -136,6 +140,7 @@ def generate_expression(parts, inline_instructions):
 				operands.append(expr_operand)
 				subexpr_start = -1
 		elif is_operator(part) and subexpr_start < 0:
+			#print("Found operator: " + part)
 			operators.append(part)
 		elif subexpr_start < 0:
 			#if re.search(r'[a-zA-Z0-9:_]+\(.*\)', part, re.I|re.M):
@@ -144,7 +149,6 @@ def generate_expression(parts, inline_instructions):
 				operands.append(f'@local._inline{index}')
 				
 				# Find all arguments: notice that arguments *cannot* be instructions
-				# TODO: identificate values and decorate them
 				instr_args = "{"
 				k = i + 1
 				while k < len(parts):
@@ -169,9 +173,11 @@ def generate_expression(parts, inline_instructions):
 				inline_instructions.append(f'{{key = "@local._inline{index}", name = "{part}", args = {instr_args}}}')
 				logging.debug(f'Found inline instruction "{part}" with args: {instr_args}') 
 			else:
+				print("Found operand: " + part)
 				operands.append(part)
 		
 		if len(operands) == 2 and len(operators) == 1:
+			
 			right = operands.pop()
 			left = operands.pop()
 			op = operators.pop()
@@ -191,11 +197,13 @@ def generate_expression(parts, inline_instructions):
 			result += right
 			result += '}'
 			
+			print("We are ready: " + result)
 			return result
 		
 		i = i + 1
-			
-	return result
+	
+	print("These were the parts: " + "".join(parts))
+	return 
 
 
 def is_operator(s):
@@ -259,11 +267,20 @@ def parse_variable_assignment(line, line_number, nesting, result):
 def parse_instruction(line, nesting, result):
 	parenthesis_start = line.find("(")
 	parenthesis_end = line.find(")")
-	if parenthesis_start > -1 and parenthesis_end > -1 and parenthesis_end > parenthesis_start:
+	if parenthesis_start > -1 and parenthesis_end > -1 and parenthesis_end > parenthesis_start:	
 		instr_name = line[:parenthesis_start]
 		args_str = line[parenthesis_start + 1:parenthesis_end]
-				
-		result.append((nesting*"\t") + f'{{name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
+		
+		# Support npc:wait instruction
+		if instr_name == "npc:wait":
+			# Only one argument expected - "time"
+			wait_value = args_str.split("=", 1)[1].strip()
+			result.append((nesting*"\t") + '{key = "_prev_proc_int", name = "npc:get_proc_interval"}')
+			result.append((nesting*"\t") + '{name = "npc:set_proc_interval", args = {wait_time = ' \
+				+ wait_value + ', value = {left = ' + wait_value + ', op = "-", right = "@local._prev_proc_int"}}}')
+			result.append((nesting*"\t") + '{name = "npc:set_proc_interval", args = {value = "@local._prev_proc_int"}}')
+		else:	
+			result.append((nesting*"\t") + f'{{name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
 
 
 ###################################################################
@@ -478,9 +495,14 @@ def parse_instructions(lines, nesting):
 			parse_instruction(line, nesting, result)
 		
 		###################################################################
-		# Check for break instruction
+		# Check for break keyword
 		elif re.search(r'^\s*break\s*$', line, re.M|re.I):
-			result.append((nesting*"\t") + f'{{name = "npc:break"}}')
+			result.append((nesting*"\t") + '{name = "npc:break"}')
+			
+		###################################################################
+		# Check for exit keyword
+		elif re.search(r'^\s*exit\s*$', line, re.M|re.I):
+			result.append((nesting*"\t") + '{name = "npc:exit"}')
 
 		i = i + 1
 

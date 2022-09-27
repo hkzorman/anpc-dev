@@ -59,6 +59,7 @@
       <keyword>switch</keyword>
       <keyword>then</keyword>
       <keyword>while</keyword>
+      <keyword>exit</keyword>
     </context>
 
     <context id="functions" style-ref="function">
