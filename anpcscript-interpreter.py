@@ -109,7 +109,7 @@ def process_expression(expr, inline_instructions):
 
 	
 def generate_expression(parts, inline_instructions):
-	print("Parts: " + "".join(parts))
+	#print("Parts: " + "".join(parts))
 	parenthesis = []
 	operators = []
 	operands = []
@@ -173,7 +173,7 @@ def generate_expression(parts, inline_instructions):
 				inline_instructions.append(f'{{key = "@local._inline{index}", name = "{part}", args = {instr_args}}}')
 				logging.debug(f'Found inline instruction "{part}" with args: {instr_args}') 
 			else:
-				print("Found operand: " + part)
+				#print("Found operand: " + part)
 				operands.append(part)
 		
 		if len(operands) == 2 and len(operators) == 1:
@@ -197,12 +197,12 @@ def generate_expression(parts, inline_instructions):
 			result += right
 			result += '}'
 			
-			print("We are ready: " + result)
+			#print("We are ready: " + result)
 			return result
 		
 		i = i + 1
 	
-	print("These were the parts: " + "".join(parts))
+	#print("These were the parts: " + "".join(parts))
 	return 
 
 
