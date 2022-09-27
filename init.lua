@@ -98,6 +98,7 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 		"real_coordinates[true]",
 		-- Top toolbar
 		"button[0.25,0.25;3,0.5;execute;"..execute_btn_label.."]",
+		"button[8.75,0.25;3,0.5;exec_program;Execute...]",
 		"label[12,0.25;Proc Interval]",
 		"field[15,0.25;0.75,0.5;proc_interval;;]",
 		"button_exit[16.5,0.25;1.25,0.5;exit_btn;Close]",

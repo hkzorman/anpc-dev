@@ -3,12 +3,6 @@ define program vegetarian:init
 	@global.hunger = 0
 end
 
-define program vegetarian:get_hungry
-	while (true == true) do
-		@global.hunger = @global.hunger + 2
-	end
-end
-
 -- This program supports the following arguments:
 -- arg1
 -- arg2
