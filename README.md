@@ -1,7 +1,7 @@
 # anpc-dev
 Development documentation, tools and examples  for `anpc` Minetest mod.
 
-For programming reference, please see (the API doc)[programming_api.md]
+For programming reference, please see [the API doc](https://github.com/hkzorman/anpc-dev/blob/main/programming_api.md)
 
 ## Included tools
 ### anpcscript-interpreter
