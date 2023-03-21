@@ -17,7 +17,7 @@ Programs are made of three basic concepts:
 
 Instructions
 ------------
-Instructions are the basic building block of programs. They are made of Lua code. Their name is usually of the syntax <namespace>:<instruction name>, but after "namespace" there could be more names which actually represent grouping. These are merely conventions and are not really needed - the name is just the name. Instructions can receive an arbitrary number of parameters. Some instructions are built-in (and these are named always with "npc" as the namespace) while others can be registered locally.
+Instructions are the basic building block of programs. They are made of Lua code. Their name is usually of the syntax <namespace>:<instruction name>, but after "namespace" there could be more names which actually represent grouping. These are merely conventions and are not really needed - the name is just the name and is not used by `anpc` in any way. Instructions can receive an arbitrary number of parameters. Some instructions are built-in (and these are named always with "npc" as the namespace) while others can be registered locally.
 
 Instruction reference:
 ----------------------

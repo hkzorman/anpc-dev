@@ -265,7 +265,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 			if entity.debug.pause then
 				local instruction = npc.proc.program_table[entity.process.current.name].instructions[entity.process.current.instruction]
 				
-				if instruction.breakpoint == true then
+				if instruction and instruction.breakpoint == true then
 					instruction.override = true
 				end
 			end
