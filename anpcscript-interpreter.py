@@ -146,7 +146,7 @@ def generate_expression(parts, inline_instructions):
 			#if re.search(r'[a-zA-Z0-9:_]+\(.*\)', part, re.I|re.M):
 			if re.search(r'[a-zA-Z0-9]+:[a-zA-Z0-9]+', part, re.I|re.M):
 				index = len(inline_instructions)
-				operands.append(f'@local._inline{index}')
+				operands.append(f'@local._inline_{part}{index}')
 				
 				# Find all arguments: notice that arguments *cannot* be instructions
 				instr_args = "{"
@@ -170,7 +170,7 @@ def generate_expression(parts, inline_instructions):
 				instr_args = instr_args + "}"
 				
 				i = k
-				inline_instructions.append(f'{{key = "@local._inline{index}", name = "{part}", args = {instr_args}}}')
+				inline_instructions.append(f'{{key = "@local._inline_{part}{index}", name = "{part}", args = {instr_args}}}')
 				logging.debug(f'Found inline instruction "{part}" with args: {instr_args}') 
 			else:
 				#print("Found operand: " + part)
