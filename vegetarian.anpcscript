@@ -93,3 +93,14 @@ define program vegetarian:feed
 		end
 	end
 end
+
+define program vegetarian:own
+	npc:env:nodes:set_owned(value = @args.value, pos = @args.pos, categories = @args.categories)
+end
+
+define program vegetarian:walk_to_owned
+	@local.target_node = npc:env:node:store:get(only_one = true, categories = @args.categories)
+	if (@local.target_node ~= nil) then
+		npc:execute(name = "npc:walk_to_pos", args = {pos = @local.target_node.pos, force_accessing_node = true})
+	end
+end
