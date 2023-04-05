@@ -12,7 +12,10 @@ local _npc_dev = {
 		selected_instr_idx = 1,
 		selected_arg_idx = 1,
 		args_by_index = {},
-		breakpoint_idxs = {}
+		breakpoint_idxs = {},
+		current_program = "",
+		current_program_lines = {},
+		current_program_source = ""
 	},
 	selector = {
 		selected_program = ""
@@ -96,59 +99,92 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 	local args_section = ""
 	
 	-- Overrides current instruction if in pause mode
-	local selected_instr = current_instruction
-	if _npc_dev.debugger.selected_instr_idx > 0 and entity.debug.pause then
-		selected_instr = _npc_dev.debugger.selected_instr_idx
-	else
-		_npc_dev.debugger.selected_instr_idx = -1
-	end
+	local selected_instr = -1
 	
+	local source_code = ""
 	if current_program then
+		if _npc_dev.debugger.current_program ~= current_program then
+			_npc_dev.debugger.current_program = current_program
+
+			-- Load program source file
+			local source_filename = npc.proc.program_table[current_program].source_file
+			minetest.log("Reading source file: "..dump(source_filename))
+			local program_lines = io.lines(source_filename)
+			--minetest.log("Program lines: "..dump(program_lines))
+			for line in program_lines do
+				table.insert(_npc_dev.debugger.current_program_lines, line)
+				_npc_dev.debugger.current_program_source = _npc_dev.debugger.current_program_source..line.."\n"
+			end
+		end
+
+		source_code = _npc_dev.debugger.current_program_source
+		--minetest.log("Current program source code: "..dump(source_code))
+		
 		--minetest.log(dump(npc.proc.program_table[current_program]))
-		for index, instr in pairs(npc.proc.program_table[current_program].instructions) do
+		-- for index, instr in pairs(npc.proc.program_table[current_program].instructions) do
+		-- 	local color = "#ffffff"
+		-- 	local breakpoint = ""
+		-- 	if instr.breakpoint == true then
+		-- 		color = "#bf4040"
+		-- 		breakpoint = "•"
+		-- 	end
+				
+		-- 	instruction_names = instruction_names..color..","..breakpoint..","..index..","..minetest.formspec_escape(instr.name)..","
+		-- end
+
+		for index, line in pairs(_npc_dev.debugger.current_program_lines) do
 			local color = "#ffffff"
 			local breakpoint = ""
-			if instr.breakpoint == true then
-				color = "#bf4040"
-				breakpoint = "•"
-			end
+			-- if instr.breakpoint == true then
+			-- 	color = "#bf4040"
+			-- 	breakpoint = "•"
+			-- end
 				
-			instruction_names = instruction_names..color..","..breakpoint..","..index..","..minetest.formspec_escape(instr.name)..","
+			instruction_names = instruction_names..color..","..breakpoint..","..index..","..minetest.formspec_escape(line)..","
 		end
+
+		minetest.log("Current instruction: "..dump(npc.proc.program_table[current_program].instructions[current_instruction]))
+		selected_instr = npc.proc.program_table[current_program].instructions[current_instruction].srcmap
+		-- if _npc_dev.debugger.selected_instr_idx > 0 and entity.debug.pause then
+		-- 	selected_instr = _npc_dev.debugger.selected_instr_idx
+		-- else
+		-- 	_npc_dev.debugger.selected_instr_idx = -1
+		-- end
 		
-		if selected_instr then
-			local instruction = npc.proc.program_table[current_program].instructions[selected_instr]
-			-- Generate args viewer
-			if instruction then
+		-- TODO: make it work with source map
+		-- if selected_instr then
+		-- 	local instruction = npc.proc.program_table[current_program].instructions[selected_instr]
+		-- 	-- Generate args viewer
+		-- 	if instruction then
 			
-				local instr_args = instruction.args
-				_npc_dev.debugger.args_by_index = {}
+		-- 		local instr_args = instruction.args
+		-- 		_npc_dev.debugger.args_by_index = {}
 		
-				local keys = ""
-				if instr_args and type(instr_args) == "table" then
-					for k,v in pairs(instr_args) do
-						table.insert(_npc_dev.debugger.args_by_index, k)
-						if type(v) ~= "function" and type(v) ~= "userdata" then
-							keys = keys..minetest.formspec_escape(k).." ("..type(v):sub(1,1).."),"
-						end
-					end
-				end
+		-- 		local keys = ""
+		-- 		if instr_args and type(instr_args) == "table" then
+		-- 			for k,v in pairs(instr_args) do
+		-- 				table.insert(_npc_dev.debugger.args_by_index, k)
+		-- 				if type(v) ~= "function" and type(v) ~= "userdata" then
+		-- 					keys = keys..minetest.formspec_escape(k).." ("..type(v):sub(1,1).."),"
+		-- 				end
+		-- 			end
+		-- 		end
 				
-				local selected_arg_idx = _npc_dev.debugger.selected_arg_idx
+		-- 		local selected_arg_idx = _npc_dev.debugger.selected_arg_idx
 				
-				-- Get editor for value
-				local selected_key = _npc_dev.debugger.args_by_index[selected_arg_idx]
-				minetest.log("Sekected key: "..dump(selected_key))
-				local selected_val = minetest.write_json(instr_args[selected_key], true)
+		-- 		-- Get editor for value
+		-- 		local selected_key = _npc_dev.debugger.args_by_index[selected_arg_idx]
+		-- 		minetest.log("Sekected key: "..dump(selected_key))
+		-- 		local selected_val = minetest.write_json(instr_args[selected_key], true)
 				
-				local args_list_height = 10
-				if entity.debug.pause then args_list_height = 5 end
-				args_section = "textlist[12.75,1.75;5,"..args_list_height..";arguments;"..keys..";"..selected_arg_idx.."]"
-				if entity.debug.pause then
-					args_section = args_section.."textarea[12.75,6.75;5,5;;;"..selected_val.."]"
-				end
-			end
-		end
+		-- 		local args_list_height = 10
+		-- 		if entity.debug.pause then args_list_height = 5 end
+		-- 		args_section = "textlist[12.75,1.75;5,"..args_list_height..";arguments;"..keys..";"..selected_arg_idx.."]"
+		-- 		if entity.debug.pause then
+		-- 			args_section = args_section.."textarea[12.75,6.75;5,5;;;"..selected_val.."]"
+		-- 		end
+		-- 	end
+		-- end
 	end
 	--
 		
@@ -187,10 +223,14 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 		data_section,
 		-- Process
 		"label[8,1.5;"..dump(current_program).."]",
+		--"textarea[0.25,1.5;6,10;garbage;Garbage;"..minetest.formspec_escape(source_code).."]",
+
+
+
 		"label[12,1.5;Instr pointer: "..dump(current_instruction).."]",
 		"style[instructions;font=mono;font_size=-3]",
 		"tablecolumns[color;text;text,width=2.0;text]",
-		"table[8,1.75;4.5,10;instructions;"..instruction_names..";"..selected_instr.."]",
+		"table[0.25,1.75;10,10;instructions;"..instruction_names..";"..selected_instr.."]",
 		args_section
 	  },'')
 	  
@@ -362,7 +402,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 		if fields["program_list"] then
 			local event = minetest.explode_textlist_event(fields["program_list"])
 			if event.type == "DCL" then
-				local program_name = program_name_list[event.index]
+				local program_name = _npc_dev.program_name_list[event.index]
 				
 				local program = npc.proc.program_table[program_name]
 				minetest.log(dump(program))
