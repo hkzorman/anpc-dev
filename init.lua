@@ -160,8 +160,16 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 		program_names = program_names..minetest.formspec_escape(program_name)..","
 	end
 
+	--local width = 18
+	local position = "position[0.5,0.5]"
+	-- if data_section == "" then
+	-- 	width = 12
+	-- 	position = "position[1,0.5]"
+	-- end
+
 	local formspec = table.concat({
 		"size[18,12,true]",
+		position,
 		"real_coordinates[true]",
 		-- Top toolbar
 		"box[0,0;18,0.95;#c0c0c0]",
@@ -180,6 +188,7 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 		-- Process
 		"label[8,1.5;"..dump(current_program).."]",
 		"label[12,1.5;Instr pointer: "..dump(current_instruction).."]",
+		"style[instructions;font=mono;font_size=-3]",
 		"tablecolumns[color;text;text,width=2.0;text]",
 		"table[8,1.75;4.5,10;instructions;"..instruction_names..";"..selected_instr.."]",
 		args_section
