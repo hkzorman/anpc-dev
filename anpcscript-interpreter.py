@@ -254,17 +254,17 @@ def parse_variable_assignment(line, line_number, nesting, result):
 		parenthesis_end = assignment_expr.find(")")
 		instr_name = assignment_expr[:parenthesis_start]
 		args_str = assignment_expr[parenthesis_start + 1:parenthesis_end]
-		result.append((nesting*"\t") + f'{{key = "{variable_expr}", name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
+		result.append((nesting*"\t") + f'{{key = "{variable_expr}", name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}, srcmap = {line_number}}}')
 	else:
 		extra_instructions = []
 		assignment_expr = process_expression(assignment_expr, extra_instructions)
 		if len(extra_instructions) > 0:
 			for k in range(len(extra_instructions)):
 				result.append((nesting*"\t") + extra_instructions[k])
-		result.append((nesting*"\t") + f'{{name = "npc:var:set", args = {{key = "{var_name}", value = {assignment_expr}, storage_type = "{storage_type}"}}}}')
+		result.append((nesting*"\t") + f'{{name = "npc:var:set", args = {{key = "{var_name}", value = {assignment_expr}, storage_type = "{storage_type}"}}, srcmap = {line_number}}}')
 
 # This function parses a line where a single instruction is contained
-def parse_instruction(line, nesting, result):
+def parse_instruction(line, nesting, result, source_line_number):
 	parenthesis_start = line.find("(")
 	parenthesis_end = line.find(")")
 	if parenthesis_start > -1 and parenthesis_end > -1 and parenthesis_end > parenthesis_start:	
@@ -280,7 +280,7 @@ def parse_instruction(line, nesting, result):
 				+ wait_value + ', value = {left = ' + wait_value + ', op = "-", right = "@local._prev_proc_int"}}}')
 			result.append((nesting*"\t") + '{name = "npc:set_proc_interval", args = {value = "@local._prev_proc_int"}}')
 		else:	
-			result.append((nesting*"\t") + f'{{name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}}}')
+			result.append((nesting*"\t") + f'{{name = "{instr_name}", args = {generate_arguments_for_instruction(args_str)}, srcmap = {source_line_number}}}')
 
 
 ###################################################################
@@ -310,7 +310,10 @@ def parse_file(filename, debug, lines):
 				if re.search(r'^end$', lines[j], re.M|re.I):
 					# Found definition end, parse this program and continue
 					result.append(f'npc.proc.register_program("{program_name}", {{')
-					lua_code_lines = parse_instructions(program_lines, 1)
+					# Original line number is i + 2 to because:
+					#   1. i starts at 0, but lines start at 1
+					#   2. we skip one the program definition line to start of the instructions
+					lua_code_lines = parse_instructions(program_lines, 1, i + 2)
 					for k in range(len(lua_code_lines)):
 						result.append(f'{lua_code_lines[k]}{"," if k < len(lua_code_lines) - 1 else ""}')
 					result.append(f'}}, "{filename}")\n' if debug == True else "})\n")
@@ -323,7 +326,7 @@ def parse_file(filename, debug, lines):
 
 	return result
 
-def parse_instructions(lines, nesting):
+def parse_instructions(lines, nesting, original_line_number):
 	logging.debug('Executing "parse_instructions" with lines:\n' + "".join(lines))
 	result = []
 
@@ -341,11 +344,12 @@ def parse_instructions(lines, nesting):
 		###################################################################
 		# Check for "variable assignment" line
 		if re.search(r'^\s*@[a-z]*.[a-z_0-9A-Z]*\s=\s.*$', line, re.M|re.I):
-			parse_variable_assignment(line, i, nesting, result)
+			parse_variable_assignment(line, original_line_number + i, nesting, result)
 		
 		###################################################################
 		# Check for control instruction line
 		elif re.search(r'^\s*(while|for|if)\s\(.*\)\s(do|then)$', line, re.M|re.I):
+			control_starting_line = i
 			control_stack = []
 					
 			# Find the control instruction
@@ -433,8 +437,8 @@ def parse_instructions(lines, nesting):
 			# Now, process all the instructions that we found
 			if not loop_instructions:
 				logging.warning(f'Found control structure "{control_instr}" without any instructions at: line {j+1}')
-			processed_loop_instrs = parse_instructions(loop_instructions, nesting)
-			processed_false_instrs = parse_instructions(false_instructions, nesting)
+			processed_loop_instrs = parse_instructions(loop_instructions, nesting, original_line_number + control_starting_line + 1)
+			processed_false_instrs = parse_instructions(false_instructions, nesting, original_line_number + control_starting_line + len(loop_instructions) + 1)
 			
 			# Add the primitive control instructions
 			if control_instr == "if":
@@ -443,7 +447,7 @@ def parse_instructions(lines, nesting):
 				jump_index = len(processed_loop_instrs) + offset
 				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
 					+ ', offset = true, negate = true, pos = ' + str(jump_index) \
-					+ '}}, -- IF [' + str(len(result) + 1) + ']')
+					+ ', srcmap = ' + str(original_line_number + control_starting_line) + '}}, -- IF [' + str(len(result) + 1) + ']')
 					
 				# Add true instructions
 				for instr in processed_loop_instrs:
@@ -453,7 +457,9 @@ def parse_instructions(lines, nesting):
 				if len(processed_false_instrs) > 0:
 					jump_index = len(processed_false_instrs)
 					result.append((nesting*"\t") + '{name = "npc:jump", args = {offset = true, pos = ' \
-						+ str(jump_index) + '}}, -- ELSE [' + str(len(result) + 1) + ']')
+						+ str(jump_index) + ', srcmap = ' \
+						+ str(original_line_number + control_starting_line + len(loop_instructions)) \
+						+ '}}, -- ELSE [' + str(len(result) + 1) + ']')
 
 					# Add false instructions
 					for instr in processed_false_instrs:
@@ -467,11 +473,12 @@ def parse_instructions(lines, nesting):
 					
 				# Add jump to start of loop if expression is true
 				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
-					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + '}}, -- WHILE end [' + str(len(result) + 1) + ']')
+					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + ', srcmap = ' + str(original_line_number + control_starting_line) + '}}, -- WHILE end [' + str(len(result) + 1) + ']')
 					
 			elif control_instr == "for":
+				for_instr_src_line_number = str(original_line_number + control_starting_line)
 				# Add instruction to set for value to initial value
-				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = ' + str(initial_value) + ', storage_type = "local"}}, -- FOR start [' + str(len(result) + 1) + ']')
+				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = ' + str(initial_value) + ', storage_type = "local", srcmap = ' + for_instr_src_line_number + '}}, -- FOR start [' + str(len(result) + 1) + ']')
 				
 				# Add loop instructions
 				loop_start = len(processed_loop_instrs) + 2
@@ -479,11 +486,11 @@ def parse_instructions(lines, nesting):
 					result.append((nesting*"\t") + instr)
 					
 				# Add instruction to increment value of for index
-				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = {left = "@local.for_index", op = "+", right = ' + str(step_increase) + '}, storage_type = "local"}}')
+				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = {left = "@local.for_index", op = "+", right = ' + str(step_increase) + '}, storage_type = "local", srcmap = ' + for_instr_src_line_number + '}}')
 				
 				# Add jump to go back to start of loop if expression is true
 				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
-					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + '}}, -- FOR end [' + str(len(result) + 1) + ']')
+					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + ', srcmap = ' + for_instr_src_line_number + '}}, -- FOR end [' + str(len(result) + 1) + ']')
 			
 			
 			logging.debug(f'loop: {processed_loop_instrs}')
@@ -492,12 +499,12 @@ def parse_instructions(lines, nesting):
 		###################################################################
 		# Check for single-line instructions
 		elif re.search(r'^(?!.*(\sif\s|\swhile\s|\sfor\s|.*=.*\(.*\))).*\(.*\)$', line, re.M|re.I):
-			parse_instruction(line, nesting, result)
+			parse_instruction(line, nesting, result, original_line_number + i)
 		
 		###################################################################
 		# Check for break keyword
 		elif re.search(r'^\s*break\s*$', line, re.M|re.I):
-			result.append((nesting*"\t") + '{name = "npc:break"}')
+			result.append((nesting*"\t") + '{name = "npc:break", srcmap = ' + str(original_line_number + i) + '}')
 			
 		###################################################################
 		# Check for exit keyword
