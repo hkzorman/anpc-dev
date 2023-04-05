@@ -447,7 +447,7 @@ def parse_instructions(lines, nesting, original_line_number):
 				jump_index = len(processed_loop_instrs) + offset
 				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
 					+ ', offset = true, negate = true, pos = ' + str(jump_index) \
-					+ ', srcmap = ' + str(original_line_number + control_starting_line) + '}}, -- IF [' + str(len(result) + 1) + ']')
+					+ '}, srcmap = ' + str(original_line_number + control_starting_line) + '}, -- IF [' + str(len(result) + 1) + ']')
 					
 				# Add true instructions
 				for instr in processed_loop_instrs:
@@ -457,9 +457,9 @@ def parse_instructions(lines, nesting, original_line_number):
 				if len(processed_false_instrs) > 0:
 					jump_index = len(processed_false_instrs)
 					result.append((nesting*"\t") + '{name = "npc:jump", args = {offset = true, pos = ' \
-						+ str(jump_index) + ', srcmap = ' \
+						+ str(jump_index) + '}, srcmap = ' \
 						+ str(original_line_number + control_starting_line + len(loop_instructions)) \
-						+ '}}, -- ELSE [' + str(len(result) + 1) + ']')
+						+ '}, -- ELSE [' + str(len(result) + 1) + ']')
 
 					# Add false instructions
 					for instr in processed_false_instrs:
@@ -473,12 +473,12 @@ def parse_instructions(lines, nesting, original_line_number):
 					
 				# Add jump to start of loop if expression is true
 				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
-					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + ', srcmap = ' + str(original_line_number + control_starting_line) + '}}, -- WHILE end [' + str(len(result) + 1) + ']')
+					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + '}, srcmap = ' + str(original_line_number + control_starting_line) + '}, -- WHILE end [' + str(len(result) + 1) + ']')
 					
 			elif control_instr == "for":
 				for_instr_src_line_number = str(original_line_number + control_starting_line)
 				# Add instruction to set for value to initial value
-				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = ' + str(initial_value) + ', storage_type = "local", srcmap = ' + for_instr_src_line_number + '}}, -- FOR start [' + str(len(result) + 1) + ']')
+				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = ' + str(initial_value) + ', storage_type = "local"}, srcmap = ' + for_instr_src_line_number + '}, -- FOR start [' + str(len(result) + 1) + ']')
 				
 				# Add loop instructions
 				loop_start = len(processed_loop_instrs) + 2
@@ -486,11 +486,11 @@ def parse_instructions(lines, nesting, original_line_number):
 					result.append((nesting*"\t") + instr)
 					
 				# Add instruction to increment value of for index
-				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = {left = "@local.for_index", op = "+", right = ' + str(step_increase) + '}, storage_type = "local", srcmap = ' + for_instr_src_line_number + '}}')
+				result.append((nesting*"\t") + '{name = "npc:var:set", args = {key = "for_index", value = {left = "@local.for_index", op = "+", right = ' + str(step_increase) + '}, storage_type = "local"}, srcmap = ' + for_instr_src_line_number + '}')
 				
 				# Add jump to go back to start of loop if expression is true
 				result.append((nesting*"\t") + '{name = "npc:jump_if", args = {expr = ' + bool_expr_str \
-					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + ', srcmap = ' + for_instr_src_line_number + '}}, -- FOR end [' + str(len(result) + 1) + ']')
+					+ ', negate = false, offset = true, pos = ' + str(loop_start * -1) + '}, srcmap = ' + for_instr_src_line_number + '}, -- FOR end [' + str(len(result) + 1) + ']')
 			
 			
 			logging.debug(f'loop: {processed_loop_instrs}')
