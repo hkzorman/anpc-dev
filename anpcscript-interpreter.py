@@ -316,7 +316,7 @@ def parse_file(filename, debug, lines):
 					lua_code_lines = parse_instructions(program_lines, 1, i + 2)
 					for k in range(len(lua_code_lines)):
 						result.append(f'{lua_code_lines[k]}{"," if k < len(lua_code_lines) - 1 else ""}')
-					result.append(f'}}, "{filename}")\n' if debug == True else "})\n")
+					result.append(f'}}, "{filename}", {i + 2}, {j})\n' if debug == True else "})\n")
 
 					logging.info(f'Successfully parsed program "{program_name}" ({j-i-1} lines of code)')
 					i = i + j
