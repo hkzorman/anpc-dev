@@ -73,8 +73,8 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 	local entity = entity_ref:get_luaentity()
 	local execute_btn_label = ""
 	if not entity.debug.pause then execute_btn_label = "pause.png" else execute_btn_label = "play.png" end
-	local current_program = entity.process.current.name
-	local current_instruction = entity.process.current.instruction
+	local current_program_name = entity.process.current.name
+	local current_instruction_idx = entity.process.current.instruction
 	
 	-- Generate data tabs
 	local data_section = ""
@@ -89,8 +89,9 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 		end
 		
 		data_section = table.concat({
-			"tabheader[0.25,1.5;6,0.5;data_tabheader;Data,Process,Timers;1;false;true]",
-			"textarea[0.25,1.5;6,10;;;"..data.."]"
+			"tabheader[12.25,1.5;6,0.5;data_tabheader;Data,Process,Timers;1;false;true]",
+			"style[data_preview;font=mono;font_size=-3]",
+			"textarea[12.25,1.5;5.5,10;data_preview;;"..data.."]"
 		})
 	end
 	
@@ -99,15 +100,15 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 	local args_section = ""
 	
 	-- Overrides current instruction if in pause mode
-	local selected_instr = -1
+	local selected_instr_idx = -1
 	
 	local source_code = ""
-	if current_program then
-		if _npc_dev.debugger.current_program ~= current_program then
-			_npc_dev.debugger.current_program = current_program
+	if current_program_name then
+		if _npc_dev.debugger.current_program ~= current_program_name then
+			_npc_dev.debugger.current_program = current_program_name
 
 			-- Load program source file
-			local source_filename = npc.proc.program_table[current_program].source_file
+			local source_filename = npc.proc.program_table[current_program_name].source_file
 			minetest.log("Reading source file: "..dump(source_filename))
 			local program_lines = io.lines(source_filename)
 			--minetest.log("Program lines: "..dump(program_lines))
@@ -143,8 +144,12 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 			instruction_names = instruction_names..color..","..breakpoint..","..index..","..minetest.formspec_escape(line)..","
 		end
 
-		minetest.log("Current instruction: "..dump(npc.proc.program_table[current_program].instructions[current_instruction]))
-		selected_instr = npc.proc.program_table[current_program].instructions[current_instruction].srcmap
+		local current_instruction = npc.proc.program_table[current_program_name].instructions[current_instruction_idx]
+		minetest.log("Current instruction: "..dump(current_instruction))
+		
+		if current_instruction then
+			selected_instr_idx = current_instruction.srcmap
+		end
 		-- if _npc_dev.debugger.selected_instr_idx > 0 and entity.debug.pause then
 		-- 	selected_instr = _npc_dev.debugger.selected_instr_idx
 		-- else
@@ -222,15 +227,11 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 		-- Data
 		data_section,
 		-- Process
-		"label[8,1.5;"..dump(current_program).."]",
-		--"textarea[0.25,1.5;6,10;garbage;Garbage;"..minetest.formspec_escape(source_code).."]",
-
-
-
-		"label[12,1.5;Instr pointer: "..dump(current_instruction).."]",
+		"label[0.25,1.5;"..dump(current_program_name).."]",
+		"label[12,1.5;Instr pointer: "..dump(selected_instr_idx).."]",
 		"style[instructions;font=mono;font_size=-3]",
 		"tablecolumns[color;text;text,width=2.0;text]",
-		"table[0.25,1.75;10,10;instructions;"..instruction_names..";"..selected_instr.."]",
+		"table[0.25,1.75;11.75,10;instructions;"..instruction_names..";"..selected_instr_idx.."]",
 		args_section
 	  },'')
 	  
