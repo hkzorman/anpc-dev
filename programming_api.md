@@ -15,9 +15,17 @@ Programs are made of three basic concepts:
 2. Program control
 3. Variables
 
+State Process
+-------------
+The state process is a program that is continually executed. When its execution is over, the execution starts again.
+
+The state process information is stored under `self.process.state`. You can retrieve the name and arguments of the current state process by using `self.process.state.name` and `self.process.state.args` respectively.
+
+
 Instructions
 ------------
 Instructions are the basic building block of programs. They are made of Lua code. Their name is usually of the syntax <namespace>:<instruction name>, but after "namespace" there could be more names which actually represent grouping. These are merely conventions and are not really needed - the name is just the name and is not used by `anpc` in any way. Instructions can receive an arbitrary number of parameters. Some instructions are built-in (and these are named always with "npc" as the namespace) while others can be registered locally.
+
 
 Instruction reference:
 ----------------------
