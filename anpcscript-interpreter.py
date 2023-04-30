@@ -523,26 +523,32 @@ def parse_instructions(lines, nesting, original_line_number):
 def main():
 	if len(sys.argv) < 3:
 		print("anpcscript-interpreter.py v1.0")
+		print("(c) by hkzorman\n")
 		print("This python script converts a anpc-script file into Lua code")
 		print("understandable by the anpc Minetest mod\n")
-		print('Usage: "python3 anpcscript-interpreter.py <input-file> <output-file> <enable-debug=false>"\n')
+		print('Usage: "python3 anpcscript-interpreter.py <input-file> <output-file> <--enable-debug=false>"\n')
 		sys.exit(0)
 
 	lines = []
 	input_name = sys.argv[1]
 	output_name = sys.argv[2]
-	logging.info(f'Starting parsing file "{input_name}"')
+	filename = os.path.basename(input_name)
+	logging.info(f'Starting parsing file "{filename}"')
 	with open(input_name, "r") as file:
 		for line in file:
 			lines.append(line)
 
-	logging.info(f'Successfully parsed file "{input_name}" generating {len(lines)} lines of Lua code')
+	logging.info(f'Successfully parsed file "{filename}" generating {len(lines)} lines of Lua code')
 
 	# Enable debug mode if flag is on
 	debug = False
 	input_full_path = ""
 	if "--enable-debug" in sys.argv:
-		input_full_path = f'{os.path.join(os.getcwd(), input_name)}'
+		print(f"OS Working Dir: " + os.getcwd())
+		input_full_path = f'{os.path.abspath(input_name)}'
+		# Properly escape Windows path
+		if os.name == "nt":
+			input_full_path = input_full_path.replace('\\', '\\\\')
 		debug = True
 
 	lua_code = parse_file(input_full_path, debug, lines)
