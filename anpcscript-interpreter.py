@@ -2,6 +2,10 @@
 # (C) by Zorman2000
 #
 # Please don't use this as an example of good Python code :)
+# 
+# What it DOES NOT SUPPORTS:
+# - Multiline variable declaration (e.g. multiline tables)
+# - Nested for-loops
 
 import logging
 import os
@@ -53,8 +57,8 @@ def decorate_value(value_str):
 	if value_str.find("=") > -1:
 		result = "{"
 		sub_keyvalue_pairs = find_key_value_pairs(value_str[1:len(value_str)-1])
-		#print("Sub kv")
-		#print(sub_keyvalue_pairs)
+		# print("Sub kv")
+		# print(sub_keyvalue_pairs)
 		for i in range(len(sub_keyvalue_pairs)):
 			parts = sub_keyvalue_pairs[i].split("=", 1)
 			logging.debug("PARTS:")
@@ -66,6 +70,20 @@ def decorate_value(value_str):
 				result = result + ", "
 		result = result + "}"
 		
+	return result
+
+def clean_table_key(value_str):
+	result = ""
+	stack = []
+	for i in range(0, len(value_str)):
+		if value_str[i:i+1] == "[":
+			stack.append(value_str[i:i+1])
+		if value_str[i:i+1] == "\"" and len(stack) > 0:
+			continue
+		if value_str[i:i+1] == "]" and len(stack) > 0:
+			stack.pop()
+		result = result + value_str[i:i+1]
+	
 	return result
 
 # TODO: Allow instructions on arguments
@@ -92,6 +110,13 @@ def generate_arguments_for_instruction(args_str):
 
 
 def process_expression(expr, inline_instructions):
+	# If expression starts with a {, assume it is a table, return as is.
+	# IMPORTANT: This is limited to tables on a single line
+	# TODO: Support table over multiple lines
+	# TODO: Support variables in tables
+	if expr[:1] == "{":
+		return expr
+
 	# If expression is a lua function, return function
 	if expr[:4] == "lua:":
 		return expr[4:]
@@ -99,13 +124,14 @@ def process_expression(expr, inline_instructions):
 	# If expression contains an arithmetic character, process
 	if re.search(r'(==|~=|<|>|<=|>=|\+|-|\*|/|%|&&|\|\|)', expr, re.I|re.M):
 		expr_parts = re.split(r'(\(|\)|\s+)', expr)
+		print("Expression parts: ", expr_parts)
 		return generate_expression(expr_parts, inline_instructions)
 
-	# Else we checkjust return whatever we were given
+	# Else we just return whatever we were given
 	if re.search(r'[0-9]+', expr, re.I|re.M):
 		return expr
 	else:
-		return '"' + expr + '"'
+		return '"' + clean_table_key(expr) + '"'
 
 	
 def generate_expression(parts, inline_instructions):
@@ -153,6 +179,7 @@ def generate_expression(parts, inline_instructions):
 				k = i + 1
 				while k < len(parts):
 					sub_part = parts[k]
+					print("Current sub part: ", sub_part)
 					# Identify if this is a value and decorate if needed
 					if k > 1 and (parts[k - 1] == "=" or parts[k - 2] == "="):
 						sub_part = decorate_value(sub_part)
@@ -174,7 +201,7 @@ def generate_expression(parts, inline_instructions):
 				logging.debug(f'Found inline instruction "{part}" with args: {instr_args}') 
 			else:
 				#print("Found operand: " + part)
-				operands.append(part)
+				operands.append(clean_table_key(part))
 		
 		if len(operands) == 2 and len(operators) == 1:
 			
@@ -220,7 +247,7 @@ def is_operator(s):
 # This function parses a line where a variable assignment is contained
 # TODO: Add support for inline functions inside args for instructions
 def parse_variable_assignment(line, line_number, nesting, result):
-	variable = re.search(r'@[a-z]*.[a-z_]*', line, re.I)
+	variable = re.search(r'@[a-z]*.[A-Za-z0-9_]*\[?[A-Za-z0-9"]+\]?', line, re.I)
 	if not variable:
 		logging.error(f"Error on line {line_number}: variable expected but not found")
 
@@ -236,12 +263,16 @@ def parse_variable_assignment(line, line_number, nesting, result):
 	table_key = ""
 	if variable_expr[0] == "@":
 		parts = variable_expr.split(".")
+		print("Parts", parts)
 		storage_type = parts[0][1:] # Don't include the @
 		index_bracket_open = parts[1].find("[")
 		if index_bracket_open > -1:
 			index_bracket_close = variable_expr.find("]")
-			table_key = variable_expr[index_bracket_open + 1:index_bracket_close]
-			var_name = parts[1][0:index_bracket_open]
+			table_key = parts[1][index_bracket_open + 1:index_bracket_close - 1]
+			# Sanitize double quotes as they are not needed
+			if table_key[0:1] == "\"":
+				table_key = table_key[1:len(table_key) - 2]
+			var_name = f"{parts[1][0:index_bracket_open]}[{table_key}]"
 		else:
 			var_name = parts[1]
 
@@ -343,7 +374,7 @@ def parse_instructions(lines, nesting, original_line_number):
 
 		###################################################################
 		# Check for "variable assignment" line
-		if re.search(r'^\s*@[a-z]*.[a-z_0-9A-Z]*\s=\s.*$', line, re.M|re.I):
+		if re.search(r'^\s*@[a-z]+.[a-z_0-9A-Z]+\[?[A-Za-z0-9"]+\]?\s=\s.*$', line, re.M|re.I):
 			parse_variable_assignment(line, original_line_number + i, nesting, result)
 		
 		###################################################################

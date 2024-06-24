@@ -1,0 +1,159 @@
+-- Sedentary NPC
+-- A sample NPC that stays around a house, eats, sleeps and wanders around.
+-- This NPC will also farm a little bit.
+
+define program vegetarian:init
+	@global.hunger = 0
+	npc:execute(name = "sedentary:build")
+end
+
+-- This program will be run on init. The NPC will build a small house
+define program sedentary:build
+	-- [X] [X] [X] [X] [X]
+	-- [X] [B] [ ] [C] [X]
+	-- [X] [B] [ ] [F] [X]
+	-- [X] [ ] [ ] [ ] [X]
+	-- [X] [X] [D] [X] [X]
+	-- Note: the found node is the door
+	@local.walls_schematic = {{x=-1, y=0, z=0},{x=-2, y=0, z=0}, {x=-2, y=0, z=1},{x=-2, y=0, z=2}, {x=-2, y=0, z=3}, {x=-2, y=0, z=4},{x=-1, y=0, z=4},{x=0, y=0, z=4},{x=1, y=0, z=4},{x=2, y=0, z=4},{x=2, y=0, z=3},{x=2, y=0, z=2},{x=2, y=0, z=1},{x=2, y=0, z=0}, {x=1, y=0, z=0}}
+	@local.furnace_pos = {x=1, y=1, z=2}
+	@local.chest_pos = {x=1, y=1, z=3}
+	@local.bed_pos = {x=-1, y=1, z=2}
+
+	@local.nodes = npc:env:node:find(radius = 5, nodenames = {"default:diamondblock"})
+	if (@local.nodes.length > 0) then
+		@local.random_index = npc:random(start = 1, end = @local.nodes.length)
+		@local.chosen_node = @local.nodes[@local.random_index]
+		npc:move:walk_to_pos_ll(target_pos = @local.chosen_node, force_accessing_node = true)
+
+		-- Build door - TODO: DOES NOT WORKS
+		npc:env:node:place(pos = @local.chosen_node, node = "doors:door_wood_a", param2 = 0)
+		@local.above = npc:util:vector:add(x = @local.chosen_node, y = {x = 0, y = 1, z = 0})
+		npc:env:node:place(pos = @local.above, node = "doors:hidden", param2 = 0)
+
+		-- Build walls
+		@local.start_y = 0
+		while (@local.start_y < 3) do
+			for (1; @local.for_index <= @local.walls_schematic.length; 1) do
+				@local.schematic_pos = @local.walls_schematic[@local.for_index]
+				@local.schematic_pos["y"] = @local.schematic_pos["y"] + 1
+				@local.next_pos = npc:util:vector:add(x = @local.chosen_node, y = @local.schematic_pos)
+				
+				npc:env:node:place(pos = @local.next_pos, node = "default:wood")
+			end
+			@local.start_y = @local.start_y + 1
+		end
+
+		-- Place furniture
+		@local.next_pos = npc:util:vector:add(x = @local.chosen_node, y = @local.bed_pos)
+		npc:env:node:place(pos = @local.next_pos, node = "beds:bed_bottom")
+		@local.next_pos = npc:util:vector:add(x = @local.chosen_node, y = @local.furnace_pos)
+		npc:env:node:place(pos = @local.next_pos, node = "default:furnace")
+		@local.next_pos = npc:util:vector:add(x = @local.chosen_node, y = @local.chest_pos)
+		npc:env:node:place(pos = @local.next_pos, node = "default:chest")
+	else
+		npc:execute(name = "vegetarian:wander")
+	end
+end
+
+-- This program supports the following arguments:
+-- arg1
+-- arg2
+-- arg3
+define program vegetarian:idle
+	npc:move:stand()
+	@global.hunger = @global.hunger + 2
+	
+	if (@global.hunger >= 60) then
+		npc:execute(name = "vegetarian:feed")
+	end
+	
+	-- TODO: Replace this with an scheduled event
+	if (@time >= 20000) then
+		npc:execute(name = "vegetarian:sleep")
+	end
+
+	@local.should_ack_obj = false
+	for (1; @local.for_index <= @objs.all.length; 1) do
+		if (npc:random(start = 1, end = 100) >= (100 - @args.ack_nearby_objs_chance)) then
+			@local.obj = @objs.get[@local.for_index]
+			if (@local.obj ~= nil) then
+				@local.dist = npc:distance_to(object = @local.obj)
+				@local.should_ack_obj = (@local.dist <= @args.ack_nearby_objs_dist) && (@local.dist > 0)
+			end
+		end
+		
+		if (@local.should_ack_obj == true) then
+			@local.ack_times = npc:random(start = 15, end = 30)
+			for (1; @local.for_index <= @local.ack_times; 1) do
+				@local.obj_pos = npc:obj:get_pos(object = @local.obj)
+				npc:move:rotate(target_pos = @local.obj_pos)
+			end
+			@global.hunger = @global.hunger + (@local.ack_times * 2)
+			break
+		else
+			if (npc:random(start = 1, end = 10) <= 5) then
+				npc:execute(name = "vegetarian:wander")
+			end
+		end
+	end
+end
+
+-- Super basic wandering program, will take 1-5 steps, 
+-- and will not repeat previous direction
+define program vegetarian:wander
+	@local.prev_dir = -1
+	for (1; @local.for_index < npc:random(start = 1, end = 5); 1) do
+		@local.cardinal_dir = npc:random(start = 0, end = 7)
+		while (@local.cardinal_dir == @local.prev_dir) do
+			@local.cardinal_dir = npc:random(start = 0, end = 7)
+		end
+		@local.prev_dir = @local.cardinal_dir
+		npc:move:walk(cardinal_dir = @local.cardinal_dir)
+	end
+	npc:move:stand()
+end
+
+define program vegetarian:sleep
+	@local.bed_pos = npc:env:node:find(matches = "single", radius = 35, nodenames = {"beds:bed_bottom"})
+	if (@local.bed_pos.length > 0) then
+		npc:execute(name = "npc:walk_to_pos", args = {pos = @local.bed_pos[1]})
+		npc:env:node:operate(pos = @local.bed_pos[1])
+		while (((@time > 20000) && (@time < 24000)) || (@time < 6000))) do
+			npc:wait(time = 30)
+		end
+		@global.hunger = 60
+	end
+end
+
+define program vegetarian:feed
+	while (@global.hunger >= 0) do
+		-- Go to sleep even if we are still hungry
+		-- TODO: Replace this with an scheduled event
+		if (((@time > 20000) && (@time <= 24000)) || (@time < 6000)) then
+			exit
+		end
+		
+		@local.nodes = npc:env:node:find(radius = 5, nodenames = {"default:grass_1", "default:grass_2", "default:grass_3", "default:grass_4", "default:grass_5"})
+		if (@local.nodes.length > 0) then
+			@local.random_index = npc:random(start = 1, end = @local.nodes.length)
+			@local.chosen_node = @local.nodes[@local.random_index]
+			npc:execute(name = "npc:walk_to_pos", args = {pos = @local.chosen_node, force_accessing_node = true})
+			npc:env:node:dig(pos = @local.chosen_node)
+			@global.hunger = @global.hunger - 10
+		else
+			npc:execute(name = "vegetarian:wander")
+		end
+	end
+end
+
+define program vegetarian:own
+	npc:env:nodes:set_owned(value = @args.value, pos = @args.pos, categories = @args.categories)
+end
+
+define program vegetarian:walk_to_owned
+	@local.target_node = npc:env:node:store:get(only_one = true, categories = @args.categories)
+	if (@local.target_node ~= nil) then
+		npc:execute(name = "npc:walk_to_pos", args = {pos = @local.target_node.pos, force_accessing_node = true})
+	end
+end
