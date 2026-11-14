@@ -1,0 +1,53 @@
+# anpc_model — spec-driven b3d NPC pipeline
+
+One Python spec → `models/<name>.b3d` + skin atlas(es) + spawner icon +
+verification report. Built for the anpc/Luanti workflow; the cat is the
+reference implementation and regression baseline.
+
+Full guidance (conventions, anpc frame math, Blender quirks, workflow,
+in-game checklist) lives in the project skill:
+**`.opencode/skills/anpc-blocky-model/`** — load it before doing anything
+nontrivial here.
+
+## Quickstart
+
+```powershell
+# Build a spec (out = mod root so models/ + textures/ land correctly)
+python tools\anpc_model\run_all.py tools\anpc_model\specs\<name>.py --out .
+#   --palettes a,b     build only some palettes
+#   --no-blender       skip Blender (reuse existing .b3d; spec/skin-only work)
+#   --blender <path>   or set BLENDER_EXE
+
+# Regression gate: rebuild the cat, require structural identity with the
+# shipped cat.b3d + pixel-identical cat.png
+python tools\anpc_model\selftest.py
+```
+
+Read `build/report.txt` (or the console output): layout, blender summary,
+skin audits (`bad` must be 0), 13 verify checks. `build/ascii.txt` has the
+ASCII atlas preview + any spec `preview(img)` output.
+
+## Files
+
+| File | Role |
+|---|---|
+| `specs/cat.py` | reference spec: cat model, 3 palettes, pose/skin/icon/preview hooks |
+| `run_all.py` | orchestrator: layout → blender → skins → verify → report |
+| `blender_build.py` | headless Blender: mesh + armature + keyframes → export .b3d |
+| `box_uv.py` | part list → verts/UVs/quads/vertex groups |
+| `layout_pack.py` | explicit layout validation + shelf auto-pack |
+| `skin.py` | atlas painter (`Atlas`), mirror_right auto-fill, coverage audit |
+| `b3d.py` | from-scratch BB3D parser (no model assumptions) |
+| `verify_b3d.py` | 13 spec-driven checks on the exported file |
+| `preview.py` | ASCII atlas rendering (+ spec `preview(img)` hook) |
+| `selftest.py` | regression gate vs shipped cat assets |
+| `selftest_out/` | selftest build dir (regenerated each run; git-ignored) |
+
+## Env vars
+
+- `ANPC_SPEC` / `ANPC_LAYOUT` / `ANPC_OUT` — how `run_all` passes paths to
+  the Blender subprocess (Blender 5.x swallows unknown CLI flags after
+  `--python` and tries to load them as files — see the skill's
+  `references/blender.md`).
+- `BLENDER_EXE` — blender executable override.
+- `B3D_ADDON` — add-on dir for the fallback exporter load (rarely needed).

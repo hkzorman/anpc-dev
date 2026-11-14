@@ -455,6 +455,9 @@ end)
 -- dofile paths against the server CWD, not the mod directory.
 dofile(minetest.get_modpath("anpc_dev") .. "/target.lua")
 
+-- Cat entity + idle/wander behavior programs (see cat.lua)
+dofile(minetest.get_modpath("anpc_dev") .. "/cat.lua")
+
 -- Relatively good stuff that could be used in the future
 -- but it is a little overblown and not needed right now
 --[[

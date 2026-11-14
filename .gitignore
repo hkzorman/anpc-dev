@@ -1,0 +1,10 @@
+tools/anpc_model/selftest_out/
+**/__pycache__/
+build/
+
+# local machine helpers (not mod content)
+check-nodes.ps1
+list-node.ps1
+restart-opencode.bat
+restart-opencode.ps1
+start-opencode.ps1
