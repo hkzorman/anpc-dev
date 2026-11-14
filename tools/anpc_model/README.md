@@ -1,8 +1,9 @@
 # anpc_model — spec-driven b3d NPC pipeline
 
-One Python spec → `models/<name>.b3d` + skin atlas(es) + spawner icon +
-verification report. Built for the anpc/Luanti workflow; the cat is the
-reference implementation and regression baseline.
+One Python spec → `models/<name>.b3d` + `models/<name>.blend` (editable
+source) + skin atlas(es) + spawner icon + verification report. Built for
+the anpc/Luanti workflow; the cat is the reference implementation and
+regression baseline.
 
 Full guidance (conventions, anpc frame math, Blender quirks, workflow,
 in-game checklist) lives in the project skill:

@@ -7,8 +7,8 @@ description: Build or change a blocky b3d NPC model + skin + anpc behavior in th
 
 Spec-driven pipeline in `tools/anpc_model/`: a Python **spec module** is the
 single source of truth for model + skin + animation. One command produces
-`models/<name>.b3d`, skin atlas(es), spawner icon, an ASCII preview and a
-verification report.
+`models/<name>.b3d`, the editable source `models/<name>.blend`, skin
+atlas(es), spawner icon, an ASCII preview and a verification report.
 
 Reference implementation: `tools/anpc_model/specs/cat.py` + the shipped
 `models/cat.b3d`, `textures/cat*.png`, `cat.lua`. When in doubt, diff against

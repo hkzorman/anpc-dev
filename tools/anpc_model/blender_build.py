@@ -226,6 +226,18 @@ def export_b3d(mesh_obj, out_path):
     return res
 
 
+def save_blend(mesh_obj, out_path):
+    """Save the built scene as a .blend next to the .b3d.
+
+    The .b3d is a baked snapshot (rest verts + keys); the .blend is the
+    editable source (mesh, armature, keyframes) for humans tweaking the
+    model later. Same base name as the .b3d.
+    """
+    blend_path = os.path.splitext(out_path)[0] + '.blend'
+    bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+    return blend_path
+
+
 def get_script_args():
     """Args for this script from sys.argv.
 
@@ -295,10 +307,12 @@ def main():
     pose_fn = getattr(mod, 'pose', None)
     action = build_animation(arm, spec['animation'], pose_fn, [b['name'] for b in bones])
     make_material(spec, mesh_obj)
+    blend_path = save_blend(mesh_obj, args.out)
     export_b3d(mesh_obj, args.out)
 
     print('B3D_OK', json.dumps({
         'out': args.out,
+        'blend': blend_path,
         'verts': len(mesh_obj.data.vertices),
         'faces': len(mesh_obj.data.polygons),
         'bones': [b.name for b in arm.data.bones],
