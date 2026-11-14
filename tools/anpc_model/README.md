@@ -4,10 +4,30 @@ One Python spec → `models/<name>.b3d` + skin atlas(es) + spawner icon +
 verification report. Built for the anpc/Luanti workflow; the cat is the
 reference implementation and regression baseline.
 
-Full guidance (conventions, anpc frame math, Blender quirks, workflow,
-in-game checklist) lives in the project skill:
-**`.opencode/skills/anpc-blocky-model/`** — load it before doing anything
-nontrivial here.
+## Project skill: `anpc Blocky Model`
+
+The pipeline is also packaged as a project skill at
+`.opencode/skills/anpc-blocky-model/` — it carries all the conventions
+(b3d/UV/skin rules, the winding trap, anpc frame math, the collisionbox
+square rule, Blender 5.3 exporter patch) so an LLM session can build a new
+NPC without rediscovering anything.
+
+- **Ability:** turns a request like "make a golem" into a spec-driven
+  build — writes `specs/<name>.py` (from the cat template), runs
+  `run_all.py`, checks the skin audit + 14 verify checks, pastes the
+  report's `collisionbox:` line, and wires `<name>.lua` (programs,
+  spawner, entity registration) from the cat template.
+- **Triggers:** "make an anpc NPC", rebuild/adjust the model, skin, layout
+  or animation of an existing one, or run/fix this pipeline.
+- **Use:** just ask. Example prompt:
+  > "Using the anpc Blocky Model skill, make a golem NPC: stone body, slow
+  > idle + wander, about 1 block tall, with a spawner. Save the spec as
+  > `specs/golem.py`."
+
+Detailed references live in the skill:
+`references/conventions.md` (b3d/UV/skin + winding),
+`references/anpc-frames.md` (frame math, programs, spawner, collisionbox
+rule), `references/blender.md` (headless 5.3 quirks + exporter patch).
 
 ## Quickstart
 
@@ -24,7 +44,8 @@ python tools\anpc_model\selftest.py
 ```
 
 Read `build/report.txt` (or the console output): layout, blender summary,
-skin audits (`bad` must be 0), 13 verify checks. `build/ascii.txt` has the
+skin audits (`bad` must be 0), 14 verify checks (incl. face winding), and
+the `collisionbox:` line for the mod lua. `build/ascii.txt` has the
 ASCII atlas preview + any spec `preview(img)` output.
 
 ## Files
@@ -38,7 +59,7 @@ ASCII atlas preview + any spec `preview(img)` output.
 | `layout_pack.py` | explicit layout validation + shelf auto-pack |
 | `skin.py` | atlas painter (`Atlas`), mirror_right auto-fill, coverage audit |
 | `b3d.py` | from-scratch BB3D parser (no model assumptions) |
-| `verify_b3d.py` | 13 spec-driven checks on the exported file |
+| `verify_b3d.py` | 14 spec-driven checks on the exported file |
 | `preview.py` | ASCII atlas rendering (+ spec `preview(img)` hook) |
 | `selftest.py` | regression gate vs shipped cat assets |
 | `selftest_out/` | selftest build dir (regenerated each run; git-ignored) |
