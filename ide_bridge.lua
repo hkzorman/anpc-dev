@@ -49,7 +49,8 @@
 --   state                        -> npc_state
 --
 -- Events (JSON, posted to /luanti/event):
---   booted {trusted, http, programs, npcs}
+--   booted {trusted, http, programs, npcs,
+--           breakpoints = {{name, breakpoints = {{index, srcmap}}}}}
 --   programs {programs}
 --   program_loaded {name, ok, error, instructions, programs}
 --   breakpoints_set {name, breakpoints = {{index, srcmap}}, missed = {lines}}
@@ -324,12 +325,23 @@ return function(ie, http_api)
 	local handlers = {
 
 		hello = function(cmd)
+			-- Include armed breakpoints so an IDE backend restart
+			-- (which keeps no in-memory state) can restore the gutter
+			-- marks. Empty per program => omitted.
+			local bps = {}
+			for _, name in ipairs(list_programs()) do
+				local list = npc.proc.list_breakpoints(name)
+				if #list > 0 then
+					bps[#bps + 1] = { name = name, breakpoints = list }
+				end
+			end
 			post_event({
 				type = "booted",
 				trusted = ie ~= nil,
 				http = true,
 				programs = list_programs(),
-				npcs = list_npcs()
+				npcs = list_npcs(),
+				breakpoints = bps
 			})
 		end,
 

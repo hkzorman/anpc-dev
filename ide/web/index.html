@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>anpc IDE</title>
+<link rel="stylesheet" href="/static/vendor/codemirror.min.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+	<div class="brand">anpc<span>IDE</span></div>
+	<div class="world" id="world"></div>
+	<div class="spacer"></div>
+	<div class="server-indicator" id="server"><i></i><span id="server-text">connecting&hellip;</span></div>
+	<button id="log-toggle" class="btn small" title="Show/hide event log">events</button>
+	<button id="theme-toggle" class="btn small" title="Toggle light/dark">&#9681;</button>
+</header>
+
+<main>
+	<aside class="panel" id="programs-panel">
+		<div class="panel-head">programs <span class="count" id="program-count"></span>
+			<button id="new-program" class="btn small" title="New program">+</button>
+		</div>
+		<ul id="program-list" class="list"></ul>
+	</aside>
+
+	<section class="panel" id="editor-panel">
+		<div class="panel-head editor-head">
+			<span id="editor-title">no program open</span>
+			<span class="spacer"></span>
+			<span id="editor-status" class="muted"></span>
+			<button id="save-btn" class="btn small" disabled>save</button>
+		</div>
+		<div class="tabbar">
+			<span class="tab active" id="tab-source">source</span>
+			<span class="tab" id="tab-compiled">compiled</span>
+		</div>
+		<div id="editor-wrap">
+			<div id="cm" class="cm-host"></div>
+			<pre id="compiled" class="cm-host hidden"></pre>
+		</div>
+		<div id="debug-bar" class="hidden">
+			<span id="debug-info"></span>
+			<span class="spacer"></span>
+			<button id="debug-resume" class="btn small accent">resume</button>
+		</div>
+	</section>
+
+	<aside class="panel" id="npc-panel">
+		<div class="panel-head">npcs <span class="count" id="npc-count"></span>
+			<button id="npc-refresh" class="btn small" title="Refresh the NPC list from the server">&#10227;</button>
+			<button id="spawn-btn" class="btn small" title="Spawn a cat next to you">spawn</button>
+		</div>
+		<ul id="npc-list" class="list"></ul>
+		<div id="npc-controls" class="hidden">
+			<div class="npc-info" id="npc-info"></div>
+			<div class="btn-row">
+				<button class="btn op" data-op="run" title="Set the open program as this NPC's state program and start it">run</button>
+				<button class="btn op" data-op="execute" title="Queue the open program as a one-shot">execute</button>
+			</div>
+			<div class="btn-row">
+				<button class="btn op" data-op="pause" title="Freeze the NPC">pause</button>
+				<button class="btn op" data-op="resume" title="Unfreeze (steps over an armed breakpoint)">resume</button>
+				<button class="btn op danger" data-op="stop" title="Stop everything: state, queue, current">stop</button>
+			</div>
+		</div>
+	</aside>
+</main>
+
+<footer id="event-log" class="hidden">
+	<ol id="events"></ol>
+</footer>
+
+<div id="toast"></div>
+
+<script src="/static/vendor/codemirror.min.js"></script>
+<script src="/static/mode-anpcscript.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
