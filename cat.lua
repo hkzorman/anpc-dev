@@ -45,9 +45,15 @@ npc.model.register_animation("cat.b3d", "mine_once", {
 })
 
 -- Programs
+-- Init is self-contained: it sets up the globals cat:idle needs, does an
+-- initial walk, and arms cat:idle as the persistent state process - so the
+-- cat is fully operational from a single program run, however it spawned.
+-- (set_default_program must stay last: it clears the process queue, which
+-- would drop any instructions after it.)
 npc.proc.register_program("cat:init", {
 	{name = "npc:var:set", args = {key = "hunger", value = 0, storage_type = "global"}, srcmap = 1},
-	{name = "npc:execute", args = {name = "cat:wander"}, srcmap = 2}
+	{name = "npc:execute", args = {name = "cat:wander"}, srcmap = 2},
+	{name = "npc:set_default_program", args = {name = "cat:idle"}, srcmap = 3}
 })
 
 -- State program: the cat's daily loop. Instruction map (1-based):
@@ -132,7 +138,16 @@ minetest.register_entity("anpc_dev:cat", {
 	collisionbox = {-0.15, 0, -0.15, 0.15, 0.7, 0.15},
 	stepheight = 0.5,
 	physical = true,
-	on_activate = npc.on_activate,
+	on_activate = function(self, staticdata)
+		npc.on_activate(self, staticdata)
+		-- Fresh spawn (no saved state): cat:init is self-contained -
+		-- it sets the globals, does an initial walk and arms cat:idle
+		-- as the state process. Restored entities keep their saved
+		-- process (re-running cat:init on an inert one re-arms it).
+		if staticdata == nil or staticdata == "" then
+			npc.proc.execute_program(self, "cat:init")
+		end
+	end,
 	get_staticdata = npc.get_staticdata,
 	on_step = npc.do_step,
 	on_rightclick = function(self, puncher)
@@ -154,13 +169,9 @@ minetest.register_craftitem("anpc_dev:cat_spawner", {
 	description = "Cat Spawner",
 	inventory_image = "cat_spawner.png",
 	on_use = function(itemstack, user, pointed_thing)
+		-- The entity self-initializes (cat:init + cat:idle) when it
+		-- activates, so just place it.
 		local spawn_pos = minetest.pointed_thing_to_face_pos(user, pointed_thing)
-		local entity = minetest.add_entity(spawn_pos, "anpc_dev:cat")
-		if entity then
-			npc.proc.execute_program(entity:get_luaentity(), "cat:init")
-			npc.proc.set_state_process(entity:get_luaentity(), "cat:idle")
-		else
-			minetest.remove_entity(entity)
-		end
+		minetest.add_entity(spawn_pos, "anpc_dev:cat")
 	end
 })

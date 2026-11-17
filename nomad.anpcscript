@@ -66,7 +66,7 @@ define program vegetarian:sleep
 	if (@local.bed_pos.length > 0) then
 		npc:execute(name = "npc:walk_to_pos", args = {pos = @local.bed_pos[1]})
 		npc:env:node:operate(pos = @local.bed_pos[1])
-		while (((@time > 20000) && (@time < 24000)) || (@time < 6000))) do
+		while (((@time > 20000) && (@time < 24000)) || (@time < 6000)) do
 			npc:wait(time = 30)
 		end
 		@global.hunger = 60

@@ -33,7 +33,13 @@ local _npc_dev = {
 	}
 }
 
+-- Both of these must be called at this file's main scope: their
+-- anti-spoofing check (getCurrentModName) only passes when the caller
+-- is the mod's init.lua top level - from a dofile'd file or a timer
+-- callback they silently return nil. Results are handed to the IDE
+-- bridge below.
 local env = minetest.request_insecure_environment()
+local http_api = minetest.request_http_api()
 
 minetest.register_craftitem("anpc_dev:debugger", {
 	description = "ANPC Debugger\n(Punch NPC with tool equipped to use)",
@@ -221,8 +227,10 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 		"tooltip[exec_program;Click to execute a program from the registered list]",
 		"image_button[5.2,0.1;0.75,0.75;step_over.png;step_over;]",
 		"tooltip[step_over;Click to execute current instruction and move to the next]",
-		"label[13.25,0.5;Process Interval]",
-		"field[15.75,0.25;0.75,0.5;proc_interval;;]",
+		"label[12.75,0.5;Process Interval]",
+		"field[14.9,0.25;0.75,0.5;proc_interval;;]",
+		"image_button[16.15,0.1;0.75,0.75;inventory_btn.png;inv_btn;]",
+		"tooltip[inv_btn;Show the NPC's own inventory (main + hand)]",
 		"image_button_exit[17.15,0.1;0.75,0.75;close.png;exit_btn;]",
 		-- Data
 		data_section,
@@ -236,6 +244,49 @@ npc_dev.show_debug_formspec = function(player, entity_ref)
 	  },'')
 	  
 	  minetest.show_formspec(player:get_player_name(), "anpc_dev:debugger", formspec)
+
+end
+
+-- Show the NPC's own inventory (the detached InvRef used by the
+-- npc:inv:* instructions) with real `list` formspec elements, like a
+-- chest GUI: the NPC's 32 main slots + hand, plus the viewer's own
+-- inventory so items can be moved between the two by clicking.
+-- The detached inventory is created without a player_name, so it is
+-- sent to every player and renders fine with
+-- list[detached:<uid>;...]. Manual refresh: the window redraws when
+-- the Refresh button is clicked (e.g. after the NPC moved items).
+npc_dev.show_npc_inventory_formspec = function(player, entity_ref)
+
+	local entity = entity_ref:get_luaentity()
+	local inv_data = entity.data.inv
+
+	local body
+	if inv_data == nil or inv_data.uid == nil then
+		body = "label[0.25,2;Inventory not initialized for this NPC -\nit has not run an npc:inv:* instruction yet.]"
+	else
+		local uid = inv_data.uid
+		body = table.concat({
+			"label[0.25,1.2;NPC inventory]",
+			"list[detached:"..uid..";main;0.25,1.5;8,4;0]",
+			"list[detached:"..uid..";hand;8.5,1.5;1,1;0]",
+			"label[0.25,5.9;Your inventory (click to move items between the two)]",
+			"list[current_player:main;main;0.25,6.2;8,4;0]"
+		}, '')
+	end
+
+	local formspec = table.concat({
+		"size[10,10.5,true]",
+		"real_coordinates[true]",
+		"position[0.5,0.3]",
+		"box[0,0;10,0.95;#c0c0c0]",
+		"label[0.25,0.5;Inventory - "..entity.npc_id.."]",
+		"image_button[8.15,0.1;0.75,0.75;play.png;inv_refresh;]",
+		"tooltip[inv_refresh;Redraw the inventory]",
+		"image_button_exit[9.1,0.1;0.75,0.75;close.png;inv_exit;]",
+		body
+	}, '')
+
+	minetest.show_formspec(player:get_player_name(), "anpc_dev:npc_inv", formspec)
 
 end
 
@@ -360,6 +411,10 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 			show_select_program_dialog(npc_dev.source)
 		end
 		
+		if fields["inv_btn"] then
+			npc_dev.show_npc_inventory_formspec(npc_dev.source, npc_dev.target)
+		end
+		
 		-- Handle instructions table
 		if fields["instructions"] then
 			local event = minetest.explode_table_event(fields["instructions"])
@@ -398,6 +453,14 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 		end
 	end
 	
+	-- Handle signals for the NPC inventory window
+	if formname == "anpc_dev:npc_inv" then
+		if fields["inv_refresh"] then
+			npc_dev.show_npc_inventory_formspec(npc_dev.source, npc_dev.target)
+		end
+		-- inv_exit (button_exit) just closes the window; nothing to do
+	end
+
 	-- Handle signal for editor screen
 	if formname == "anpc_dev:editor" then
 		if fields["program_list"] then
@@ -457,6 +520,32 @@ dofile(minetest.get_modpath("anpc_dev") .. "/target.lua")
 
 -- Cat entity + idle/wander behavior programs (see cat.lua)
 dofile(minetest.get_modpath("anpc_dev") .. "/cat.lua")
+
+-- Test utility NPCs + debug items, moved out of anpc during the
+-- test-code cleanup (see test_utilities/): the chest mover, the
+-- torcherer and vegetarian demo NPCs, and the test craft items
+-- (npc_spawner, follow/punch/inv_test). Registered names use the
+-- anpc_dev: prefix (the engine enforces the registering mod's
+-- prefix), so any old anpc: items/entities still in the world show
+-- as unknown objects and can be cleaned up. torcherer_code.lua is
+-- a dead draft - kept for reference, intentionally not loaded.
+local tu_path = minetest.get_modpath("anpc_dev") .. "/test_utilities"
+dofile(tu_path .. "/debug_items.lua")
+dofile(tu_path .. "/chest_mover.lua")
+dofile(tu_path .. "/torcherer.lua")
+dofile(tu_path .. "/vegetarian.lua")
+
+-- Web IDE bridge: polls the local IDE backend over HTTP, loads the
+-- IDE-managed programs from <world>/anpc_programs/ at boot, and
+-- exposes run control + breakpoints. The file returns one function;
+-- the security-sensitive APIs (env, http_api above) are passed in.
+-- Requires secure.http_mods + secure.trusted_mods = anpc_dev in the
+-- server config (see README.md); without them it starts degraded or
+-- not at all.
+local ide_bridge = dofile(minetest.get_modpath("anpc_dev") .. "/ide_bridge.lua")
+if ide_bridge then
+	ide_bridge(env, http_api)
+end
 
 -- Relatively good stuff that could be used in the future
 -- but it is a little overblown and not needed right now
