@@ -156,6 +156,36 @@ main {
 #npc-panel { width: 280px; flex: none; }
 #editor-panel { flex: 1; min-width: 0; }
 
+/* inline name form (new / duplicate) + confirm strip (delete) */
+#name-form {
+	display: flex;
+	gap: 4px;
+	padding: 4px 6px;
+	border-bottom: 1px solid var(--border);
+	background: var(--panel-2);
+}
+#name-input {
+	flex: 1;
+	min-width: 0;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--fg);
+	font: inherit;
+	padding: 2px 6px;
+}
+#name-input:focus { outline: none; border-color: var(--accent); }
+#confirm-strip {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	padding: 5px 8px;
+	border-top: 1px solid var(--border);
+	background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+	font-size: 12px;
+}
+#confirm-strip .btn { flex: none; }
+
 .panel-head {
 	display: flex;
 	align-items: center;
@@ -201,6 +231,23 @@ main {
 }
 .list li .badge.paused { color: var(--danger); }
 .list li.empty { color: var(--muted); cursor: default; }
+/* program list action buttons (duplicate / delete), revealed on hover */
+.list li .mini {
+	float: right;
+	margin-left: 4px;
+	padding: 0 4px;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	color: var(--muted);
+	font-size: 11px;
+	line-height: 16px;
+	cursor: pointer;
+	opacity: 0;
+}
+.list li:hover .mini { opacity: 1; }
+.list li .mini:hover { border-color: var(--border); background: var(--panel); color: var(--fg); }
+.list li .mini.danger:hover { color: var(--danger); border-color: var(--danger); }
 
 /* ---------- editor ---------- */
 
@@ -253,6 +300,36 @@ main {
 	background: color-mix(in srgb, var(--accent) 14%, var(--panel));
 	border-top: 1px solid var(--accent);
 	font-size: 12px;
+}
+
+#vars-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 3px 10px;
+	background: var(--panel-2);
+	border-top: 1px solid var(--border);
+	font-size: 11px;
+}
+#vars-bar .vars-title {
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	color: var(--muted);
+	font-size: 10px;
+}
+#vars-bar .btn { margin-left: auto; }
+#vars-body {
+	flex: none;
+	max-height: 160px;
+	overflow: auto;
+	margin: 0;
+	padding: 4px 10px;
+	background: var(--cm-bg);
+	color: var(--cm-fg);
+	border-top: 1px solid var(--border);
+	font: 11px/1.5 Consolas, "Cascadia Mono", monospace;
+	white-space: pre;
 }
 
 /* ---------- npc panel ---------- */

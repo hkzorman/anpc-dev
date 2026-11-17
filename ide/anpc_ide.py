@@ -208,11 +208,11 @@ def save_program(name, block_text):
         # Upsert in the running server (no restart): the code is the whole
         # recompiled file, so every program in it is re-registered.
         cmd_queue.append({"op": "load_program", "name": name, "code": res.lua})
-        # Engine breakpoints survive re-registration (kept per program
-        # name, keyed by instruction index), so re-arm each program from
-        # the last server-confirmed lines: the bridge re-resolves them
-        # against the new instructions and reports dropped ones as missed
-        # (an empty list clears any stale ones).
+        # Re-registration DROPS the program's breakpoints (they live on
+        # the instruction records), so re-arm each program from the last
+        # server-confirmed lines: the bridge re-resolves them against the
+        # new instructions and reports dropped ones as missed (an empty
+        # list clears any stale ones).
         for p in res.programs:
             cmd_queue.append({"op": "breakpoints", "name": p.name,
                               "lines": list(armed_bp.get(p.name, []))})
@@ -247,25 +247,168 @@ def create_program(name):
         return {"ok": True, "name": name, "file": fname}
 
 
+def delete_program(name):
+    """Remove a program's source + compiled output from the world store.
+
+    The SERVER-side removal is a separate, preceding step (the SPA queues
+    an "unregister" command and only calls this after the server confirms
+    with program_unregistered): unregister refuses while an NPC is running
+    the program, so the file never disappears under a live process.
+    """
+    with lock:
+        entries = read_manifest()
+        fname = None
+        for n, f in entries:
+            if n == name:
+                fname = f
+                break
+        if fname is None:
+            return {"ok": False,
+                    "error": "program not IDE-managed (no manifest entry): %s" % name}
+        stem = os.path.splitext(fname)[0]
+        src_file = os.path.join(SRC_DIR, stem + ".anpcscript")
+        lua_file = os.path.join(PROGRAMS_DIR, fname)
+        sharing = [n for n, f in entries if f == fname]
+        removed_file = False
+        if len(sharing) > 1:
+            # Other programs live in the same file: splice the block out
+            # and recompile the rest.
+            if not os.path.exists(src_file):
+                return {"ok": False, "error": "no .anpcscript source for %s" % name}
+            with open(src_file, "r", encoding="utf-8") as f:
+                cur = f.read()
+            eol = dominant_eol(cur)
+            cur_n = cur.replace("\r\n", "\n")
+            res_cur = anpc_compiler.compile(cur_n, source_path=os.path.abspath(src_file))
+            if not res_cur.ok:
+                return {"ok": False, "error": "current source does not compile - fix it first",
+                        "diagnostics": [str(d) for d in res_cur.diagnostics]}
+            cp = next((p for p in res_cur.programs if p.name == name), None)
+            if cp is None:
+                return {"ok": False, "error": "program %s not found in source file" % name}
+            lines = cur_n.split("\n")
+            new_src = "\n".join(lines[:cp.define_line - 1] + lines[cp.end_line:])
+            res = anpc_compiler.compile(new_src, source_path=os.path.abspath(src_file))
+            if not res.ok:
+                return {"ok": False, "diagnostics": [str(d) for d in res.diagnostics]}
+            with open(src_file, "w", encoding="utf-8", newline="") as f:
+                f.write(new_src.replace("\n", eol))
+            with open(lua_file, "w", encoding="utf-8", newline="") as f:
+                f.write(res.lua.replace("\n", eol))
+        else:
+            # Sole program in its file: drop both files.
+            if os.path.exists(src_file):
+                os.remove(src_file)
+            if os.path.exists(lua_file):
+                os.remove(lua_file)
+            removed_file = True
+        # Rewrite the manifest: drop every entry for this file, then
+        # re-add the programs that still live there.
+        entries = [e for e in entries if e[1] != fname]
+        if not removed_file:
+            entries.extend((p.name, fname) for p in res.programs)
+        write_manifest(entries)
+    armed_bp.pop(name, None)  # breakpoints on a gone program are stale
+    return {"ok": True, "name": name, "file": fname, "file_removed": removed_file}
+
+
+def duplicate_program(name, new_name):
+    """Copy one program into a new single-program source file, registered
+    live on the running server. The copy keeps the original's helper
+    references (npc:execute args) - only the define statement is renamed."""
+    with lock:
+        if not anpc_compiler.PROGRAM_NAME_RE.match(new_name or ""):
+            return {"ok": False,
+                    "error": "invalid program name (use letters/digits/underscore, optional ':suffix')"}
+        if manifest_for(new_name) is not None:
+            return {"ok": False, "error": "program already exists: %s" % new_name}
+        fname = manifest_for(name)
+        if fname is None:
+            return {"ok": False, "error": "program not IDE-managed (no manifest entry): %s" % name}
+        stem = os.path.splitext(fname)[0]
+        src_file = os.path.join(SRC_DIR, stem + ".anpcscript")
+        if not os.path.exists(src_file):
+            return {"ok": False, "error": "no .anpcscript source for %s" % name}
+        with open(src_file, "r", encoding="utf-8") as f:
+            cur = f.read()
+        cur_n = cur.replace("\r\n", "\n")
+        res_cur = anpc_compiler.compile(cur_n, source_path=os.path.abspath(src_file))
+        if not res_cur.ok:
+            return {"ok": False, "error": "current source does not compile - fix it first",
+                    "diagnostics": [str(d) for d in res_cur.diagnostics]}
+        cp = next((p for p in res_cur.programs if p.name == name), None)
+        if cp is None:
+            return {"ok": False, "error": "program %s not found in source file" % name}
+        block = cur_n.split("\n")[cp.define_line - 1:cp.end_line]
+        for i, l in enumerate(block):
+            m = re.match(r"^(\s*define\s+program\s+)" + re.escape(name) + r"(\s*)$", l)
+            if m:
+                block[i] = m.group(1) + new_name + m.group(2)
+                break
+        new_src = "\n".join(block)
+        base = new_name.replace(":", "_")
+        i = 2
+        while os.path.exists(os.path.join(SRC_DIR, base + ".anpcscript")) \
+                or os.path.exists(os.path.join(PROGRAMS_DIR, base + ".lua")):
+            base, i = "%s_%d" % (new_name.replace(":", "_"), i), i + 1
+        new_fname = base + ".lua"
+        new_src_file = os.path.join(SRC_DIR, base + ".anpcscript")
+        res = anpc_compiler.compile(new_src, source_path=os.path.abspath(new_src_file))
+        if not res.ok or not any(p.name == new_name for p in res.programs):
+            return {"ok": False, "diagnostics": [str(d) for d in res.diagnostics]}
+        os.makedirs(SRC_DIR, exist_ok=True)
+        os.makedirs(PROGRAMS_DIR, exist_ok=True)
+        with open(new_src_file, "w", encoding="utf-8", newline="") as f:
+            f.write(new_src)
+        with open(os.path.join(PROGRAMS_DIR, new_fname), "w", encoding="utf-8", newline="") as f:
+            f.write(res.lua)
+        write_manifest(read_manifest() + [(p.name, new_fname) for p in res.programs])
+        cmd_queue.append({"op": "load_program", "name": new_name, "code": res.lua})
+        return {"ok": True, "name": new_name, "file": new_fname}
+
+
 # ---------------------------------------------------------------------------
 # Bridge state (from posted events)
 # ---------------------------------------------------------------------------
 
 def on_bridge_event(ev):
     t = ev.get("type")
+    if t == "alive":
+        # Liveness ping from the bridge (30 s). Keeps the staleness
+        # detector fresh on a quiet world; the SPA needs no UI for it.
+        latest["last_event"] = time.time()
+        return
     events_recent.append((time.time(), ev))
     if len(events_recent) > 500:
         del events_recent[:len(events_recent) - 500]
     if t == "booted":
         latest["booted"] = True
         latest["npcs"] = ev.get("npcs") or []
+        # A booted means the bridge answered a hello: drop any queued
+        # keepalive hellos (a long outage would have piled them up).
+        with lock:
+            cmd_queue[:] = [c for c in cmd_queue if c.get("op") != "hello"]
         # Restore armed breakpoints after a cold backend start: the
         # server (not the backend) is the one keeping them armed.
+        server_bps = {}
         for bp in ev.get("breakpoints") or []:
             name = bp.get("name")
             if name is not None:
-                armed_bp[name] = [b.get("srcmap") for b in (bp.get("breakpoints") or [])
-                                  if b.get("srcmap") is not None]
+                lines = [b.get("srcmap") for b in (bp.get("breakpoints") or [])
+                         if b.get("srcmap") is not None]
+                server_bps[name] = lines
+                armed_bp[name] = lines
+        # Re-arm after a SERVER restart: breakpoints live on the program
+        # record, so re-registration at boot drops them even though this
+        # backend still tracks the armed lines. Skip programs the server
+        # already reports armed (a cold backend restart) and programs no
+        # longer present.
+        live = set(ev.get("programs") or [])
+        for name, lines in list(armed_bp.items()):
+            if lines and name in live and not server_bps.get(name):
+                with lock:
+                    cmd_queue.append({"op": "breakpoints",
+                                      "name": name, "lines": list(lines)})
     elif t == "npcs":
         latest["npcs"] = ev.get("npcs") or []
     elif t == "npc_state":
@@ -400,6 +543,20 @@ class H(BaseHTTPRequestHandler):
         r = create_program(body["name"])
         self._json(r, 200 if r["ok"] else 400)
 
+    def api_delete(self):
+        body = self._body()
+        if not isinstance(body, dict) or not body.get("name"):
+            return self._json({"ok": False, "error": "missing name"}, 400)
+        r = delete_program(body["name"])
+        self._json(r, 200 if r["ok"] else 400)
+
+    def api_duplicate(self):
+        body = self._body()
+        if not isinstance(body, dict) or not body.get("name") or not body.get("new_name"):
+            return self._json({"ok": False, "error": "missing name / new_name"}, 400)
+        r = duplicate_program(body["name"], body["new_name"])
+        self._json(r, 200 if r["ok"] else 400)
+
     def api_command(self):
         body = self._body()
         if not isinstance(body, dict) or "op" not in body:
@@ -480,6 +637,10 @@ class H(BaseHTTPRequestHandler):
             return self.api_save()
         if p == "/api/create":
             return self.api_create()
+        if p == "/api/delete":
+            return self.api_delete()
+        if p == "/api/duplicate":
+            return self.api_duplicate()
         self._json({"error": "not found"}, 404)
 
     def log_message(self, fmt, *args):

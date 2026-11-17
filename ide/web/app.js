@@ -20,6 +20,8 @@ let stateTs = 0;        // last state snapshot applied (stale-snapshot guard)
 let open = null;         // {name, file, blockStart, instructions:[{no,name,srcmap,key}], lua}
 let selectedNpc = null;
 let pausedInfo = null;   // last "paused" event
+let varsNpc = null;      // npc_id of the vars watch panel (paused NPC)
+let pendingDelete = null;  // program awaiting program_unregistered before file delete
 let bpArmed = {};        // program -> Set of FILE lines (server-confirmed)
 let bpPending = {};      // program -> Set of FILE lines (UI state, sent to server)
 
@@ -89,12 +91,16 @@ function logEvent(ev, cls) {
 	const detail = {
 		booted: "\u2014",
 		program_loaded: (ev.ok ? "loaded " : "FAILED ") + ev.name + (ev.error ? " (" + ev.error + ")" : ""),
+		program_unregistered: ev.name,
 		breakpoints_set: ev.name + ": " + (ev.breakpoints || []).length + " armed"
 			+ (ev.missed && ev.missed.length ? ", missed " + ev.missed.join(",") : ""),
 		// minetest.write_json serializes empty tables as null (5.18)
 		npcs: (ev.npcs || []).length + " npc(s)",
 		npc_state: (ev.npcs || []).map((n) => n.npc_id).join(" "),
-		paused: ev.npc_id + " @ " + ev.program + " instr " + ev.instruction + " line " + ev.line,
+		npc_vars: ev.npc_id + ": " + Object.keys((ev.vars && ev.vars.proc) || {}).length
+			+ " local(s), " + Object.keys((ev.vars && ev.vars.global) || {}).length + " global(s)",
+		paused: ev.npc_id + " @ " + ev.program + " instr " + ev.instruction
+			+ " line " + (ev.line != null ? ev.line : "?"),
 		resumed: ev.npc_id,
 		spawned: ev.npc_id + " (" + ev.entity + ")",
 		error: (ev.op || "") + " " + (ev.message || ""),
@@ -159,6 +165,26 @@ function handleEvent(ev) {
 				toast("server rejected " + ev.name + ": " + (ev.error || ""), "err");
 			}
 			break;
+		case "program_unregistered":
+			// Server removed the program (IDE delete, step 1). Drop it
+			// from the list/UI; the file on disk is removed right after
+			// via /api/delete (pendingDelete).
+			programs = programs.filter((p) => p.name !== ev.name);
+			delete bpPending[ev.name];
+			if (open && open.name === ev.name) closeEditor();
+			if (pausedInfo && pausedInfo.program === ev.name) { pausedInfo = null; hideDebugBar(); }
+			if (pendingDelete === ev.name) {
+				pendingDelete = null;
+				post("/api/delete", { name: ev.name }).then((r) => {
+					if (r.ok) { toast("deleted " + ev.name, "ok"); get("/api/state").then(applyState); }
+					else toast(r.error || "delete failed", "err");
+				});
+			}
+			renderPrograms();
+			break;
+		case "npc_vars":
+			if (varsNpc === ev.npc_id) renderVars(ev);
+			break;
 		case "breakpoints_set":
 			// Server-confirmed armed set (file lines) replaces the local
 			// pending set; re-draw marks when this program is open.
@@ -199,6 +225,9 @@ function handleEvent(ev) {
 			post("/api/command", { op: "state" });
 			break;
 		case "error":
+			if (pendingDelete && ev.op === "unregister") {
+				pendingDelete = null;  // server refused (e.g. in use) - files untouched
+			}
 			toast("server: " + (ev.op || "") + " " + (ev.message || ""), "err");
 			break;
 	}
@@ -231,9 +260,112 @@ function renderPrograms() {
 		const li = document.createElement("li");
 		if (open && open.name === p.name) li.className = "active";
 		li.innerHTML = "<span>" + p.name + "</span><br><span class='sub'>" + (p.file || "no source") + "</span>";
+		if (p.file) {
+			// Built-in/server-registered programs have no source file and
+			// are not deletable or duplicable from here.
+			const dup = document.createElement("button");
+			dup.className = "mini";
+			dup.textContent = "\u2389"; // ⧩
+			dup.title = "Duplicate " + p.name;
+			dup.onclick = (e) => { e.stopPropagation(); duplicateProgram(p.name); };
+			const del = document.createElement("button");
+			del.className = "mini danger";
+			del.textContent = "\u2715"; // ✕
+			del.title = "Delete " + p.name;
+			del.onclick = (e) => { e.stopPropagation(); deleteProgram(p.name); };
+			li.appendChild(dup);
+			li.appendChild(del);
+		}
 		li.onclick = () => openProgram(p.name);
 		ul.appendChild(li);
 	}
+}
+
+function closeEditor() {
+	open = null;
+	editorTitle.textContent = "no program open";
+	cm.setValue("");
+	cm.clearHistory();
+	saveBtn.disabled = true;
+	compiledEl.textContent = "(no compiled output)";
+	$("tab-compiled").classList.add("hidden");
+	editorStatus.textContent = "";
+	if (pausedInfo) { pausedInfo = null; hideDebugBar(); }
+}
+
+// ---------------------------------------------------------------------------
+// Inline name form + confirm strip (window.prompt/confirm are not supported
+// in every browser this runs in - e.g. the embedded IDE browser throws
+// "prompt() is not supported")
+// ---------------------------------------------------------------------------
+
+let nameFormMode = null;  // "create" | { dup: <source program name> }
+
+function showNameForm(mode, def) {
+	nameFormMode = mode;
+	$("name-form").classList.remove("hidden");
+	const input = $("name-input");
+	input.value = def || "";
+	input.focus();
+	input.select();
+}
+
+function hideNameForm() {
+	$("name-form").classList.add("hidden");
+	nameFormMode = null;
+}
+
+function submitNameForm() {
+	const mode = nameFormMode;
+	const name = $("name-input").value.trim();
+	hideNameForm();
+	if (!name || !mode) return;
+	if (mode === "create") {
+		post("/api/create", { name: name }).then((r) => {
+			if (r.ok) {
+				toast("created " + r.name + " (reloading on server)", "ok");
+				get("/api/state").then((s) => { applyState(s); openProgram(r.name); });
+			} else toast(r.error || (r.diagnostics || ["create failed"]).join(" "), "err");
+		});
+	} else {
+		post("/api/duplicate", { name: mode.dup, new_name: name }).then((r) => {
+			if (r.ok) {
+				toast("created " + r.name + " (reloading on server)", "ok");
+				get("/api/state").then((s) => { applyState(s); openProgram(r.name); });
+			} else toast(r.error || (r.diagnostics || ["duplicate failed"]).join(" "), "err");
+		});
+	}
+}
+
+function confirmStrip(message, label, onYes) {
+	const strip = $("confirm-strip");
+	strip.textContent = message + " ";
+	const yes = document.createElement("button");
+	yes.className = "btn small";
+	yes.textContent = label;
+	yes.onclick = () => { strip.classList.add("hidden"); onYes(); };
+	const no = document.createElement("button");
+	no.className = "btn small";
+	no.textContent = "cancel";
+	no.onclick = () => strip.classList.add("hidden");
+	strip.appendChild(yes);
+	strip.appendChild(no);
+	strip.classList.remove("hidden");
+}
+
+function duplicateProgram(name) {
+	showNameForm({ dup: name }, name + "_copy");
+}
+
+function deleteProgram(name) {
+	// Two-phase: the server unregisters first (refused while an NPC is
+	// running it); only the program_unregistered event triggers the
+	// on-disk file removal (handled in handleEvent).
+	confirmStrip("delete program " + name + "? An NPC running it keeps the in-memory copy until the next server restart.",
+		"delete", () => {
+			pendingDelete = name;
+			post("/api/command", { op: "unregister", name: name });
+		});
 }
 
 async function openProgram(name) {
@@ -446,13 +578,50 @@ function sendOp(op, extra) {
 function showDebugBar(ev) {
 	if (!open || ev.program !== open.name) return;
 	$("debug-bar").classList.remove("hidden");
+	// A null source line (an internal/expanded instruction) must not render
+	// as "line NaN": show the instruction only, and skip the line scroll.
+	const local0 = ev.line != null ? lineLocal(ev.line) : null;
 	$("debug-info").textContent = ev.npc_id + " paused at " + ev.program +
-		" instr " + ev.instruction + " \u2192 line " + (lineLocal(ev.line) + 1) +
+		" instr " + ev.instruction +
+		(local0 != null ? " \u2192 line " + (local0 + 1) : " (no source line)") +
 		" (" + (ev.entity || "") + ")";
-	cm.scrollTo(null, Math.max(0, (lineLocal(ev.line) - 4) * 19));
+	if (local0 != null) cm.scrollTo(null, Math.max(0, (local0 - 4) * 19));
 	cm.focus();
+	fetchVars(ev.npc_id);
 }
-function hideDebugBar() { $("debug-bar").classList.add("hidden"); }
+function hideDebugBar() {
+	$("debug-bar").classList.add("hidden");
+	$("vars-bar").classList.add("hidden");
+	$("vars-body").classList.add("hidden");
+	varsNpc = null;
+}
+
+// ---------------------------------------------------------------------------
+// Variable watch (paused NPC)
+// ---------------------------------------------------------------------------
+
+function fetchVars(npcId) {
+	varsNpc = npcId;
+	$("vars-bar").classList.remove("hidden");
+	$("vars-body").classList.remove("hidden");
+	$("vars-body").textContent = "(loading\u2026)";
+	post("/api/command", { op: "vars", npc_id: npcId });
+}
+
+function renderVars(ev) {
+	const vars = ev.vars || {};
+	const proc = vars.proc || {};
+	const global = vars.global || {};
+	let text = "proc \u00B7 " + ev.npc_id + " (" + (ev.program || "?") + " instr " + (ev.instruction != null ? ev.instruction : "?") + ")\n"
+		+ JSON.stringify(proc, null, 1) + "\n";
+	if (Object.keys(global).length) {
+		text += "\nglobal\n" + JSON.stringify(global, null, 1) + "\n";
+	}
+	$("vars-npc").textContent = text.includes("\nglobal\n")
+		? (ev.npc_id + " \u00B7 " + Object.keys(proc).length + " local(s), " + Object.keys(global).length + " global(s)")
+		: (ev.npc_id + " \u00B7 " + Object.keys(proc).length + " local(s)");
+	$("vars-body").textContent = text;
+}
 
 // ---------------------------------------------------------------------------
 // Wiring
@@ -479,21 +648,18 @@ $("tab-compiled").onclick = () => {
 	$("tab-compiled").classList.add("active");
 	$("tab-source").classList.remove("active");
 };
-$("new-program").onclick = () => {
-	const name = prompt("new program name (e.g. mycat:dance):");
-	if (!name) return;
-	post("/api/create", { name: name.trim() }).then((r) => {
-		if (r.ok) {
-			toast("created " + r.name, "ok");
-			get("/api/state").then((s) => { applyState(s); openProgram(r.name); });
-		} else toast(r.error || "create failed", "err");
-	});
-};
+$("new-program").onclick = () => showNameForm("create", "");
+$("name-ok").onclick = submitNameForm;
+$("name-input").addEventListener("keydown", (e) => {
+	if (e.key === "Enter") { e.preventDefault(); submitNameForm(); }
+	if (e.key === "Escape") { e.preventDefault(); hideNameForm(); }
+});
 $("spawn-btn").onclick = () => post("/api/command", { op: "spawn_near_player", entity: "anpc_dev:cat" });
 // The bridge only posts NPC state on request (no periodic poll in 5.18),
 // so the panel has a manual refresh.
 $("npc-refresh").onclick = () => post("/api/command", { op: "state" });
 $("debug-resume").onclick = () => { if (pausedInfo) post("/api/command", { op: "resume", npc_id: pausedInfo.npc_id }); };
+$("vars-refresh").onclick = () => { if (varsNpc) fetchVars(varsNpc); };
 for (const b of document.querySelectorAll(".btn.op")) b.onclick = () => sendOp(b.dataset.op);
 
 // theme
@@ -516,3 +682,20 @@ get("/api/state").then((s) => applyState(s)).catch(() => setServer(false));
 const es = new EventSource("/api/events");
 es.onmessage = (m) => { try { handleEvent(JSON.parse(m.data)); } catch (e) { console.error("anpc ide event", e, JSON.parse(m.data)); } };
 es.onerror = () => setServer(false);
+
+// Keepalive: the bridge posts "alive" every 30 s, so a healthy world is
+// never stale. If the last event of any kind is >40 s old (two missed
+// pings), the server restarted or died - queue a hello and the bridge
+// will answer with a fresh booted. At most one in flight, one per 15 s.
+let helloOut = false;
+let lastHello = 0;
+setInterval(() => {
+	get("/api/state").then((s) => {
+		if (!s || !s.booted) return;
+		if (Date.now() / 1000 - (s.ts || 0) > 40 && !helloOut && Date.now() / 1000 - lastHello > 15) {
+			helloOut = true;
+			lastHello = Date.now() / 1000;
+			post("/api/command", { op: "hello" }).finally(() => { helloOut = false; });
+		}
+	}).catch(() => {});
+}, 5000);

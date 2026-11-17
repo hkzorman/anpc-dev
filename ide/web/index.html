@@ -22,7 +22,12 @@
 		<div class="panel-head">programs <span class="count" id="program-count"></span>
 			<button id="new-program" class="btn small" title="New program">+</button>
 		</div>
+		<div id="name-form" class="hidden">
+			<input id="name-input" type="text" spellcheck="false" title="Program name (letters/digits/underscore, optional ':suffix')">
+			<button id="name-ok" class="btn small accent">ok</button>
+		</div>
 		<ul id="program-list" class="list"></ul>
+		<div id="confirm-strip" class="hidden"></div>
 	</aside>
 
 	<section class="panel" id="editor-panel">
@@ -45,6 +50,13 @@
 			<span class="spacer"></span>
 			<button id="debug-resume" class="btn small accent">resume</button>
 		</div>
+		<div id="vars-bar" class="hidden">
+			<span class="vars-title">variables</span>
+			<span id="vars-npc" class="muted"></span>
+			<span class="spacer"></span>
+			<button id="vars-refresh" class="btn small" title="Re-read this NPC's variables">&#10227;</button>
+		</div>
+		<pre id="vars-body" class="hidden"></pre>
 	</section>
 
 	<aside class="panel" id="npc-panel">

@@ -46,6 +46,8 @@
 --   pause {npc_id}               -> npc_state
 --   resume {npc_id}              -> resumed
 --   stop {npc_id}                -> npc_state
+--   unregister {name}            -> program_unregistered
+--   vars {npc_id}                -> npc_vars
 --   state                        -> npc_state
 --
 -- Events (JSON, posted to /luanti/event):
@@ -53,9 +55,11 @@
 --           breakpoints = {{name, breakpoints = {{index, srcmap}}}}}
 --   programs {programs}
 --   program_loaded {name, ok, error, instructions, programs}
+--   program_unregistered {name, programs}
 --   breakpoints_set {name, breakpoints = {{index, srcmap}}, missed = {lines}}
 --   npcs {npcs}
 --   npc_state {npcs}
+--   npc_vars {npc_id, program, instruction, vars = {proc, global}}
 --   spawned {npc_id, entity, pos}
 --   paused {npc_id, entity, program, instruction, line}
 --   resumed {npc_id}
@@ -496,6 +500,66 @@ return function(ie, http_api)
 			post_event({ type = "npc_state", npcs = { npc_record(ent) } })
 		end,
 
+		-- Remove a program from the running server (IDE delete). Refused
+		-- while any NPC is running it, has it queued, or it is their
+		-- state program: an in-flight process faults on its
+		-- program_table lookup if the program disappears under it.
+		unregister = function(cmd)
+			if npc.proc.program_table[cmd.name] == nil then
+				return post_error("unregister", "unknown program: " .. tostring(cmd.name))
+			end
+			local in_use = {}
+			each_npc(function(ent)
+				local p = ent.process
+				local busy = (p.current and p.current.name == cmd.name)
+					or (p.state and p.state.name == cmd.name)
+				if not busy then
+					for i = 1, p.queue_tail or 0 do
+						if p.queue[i] and p.queue[i].name == cmd.name then
+							busy = true
+							break
+						end
+					end
+				end
+				if busy then
+					in_use[#in_use + 1] = ent.npc_id
+				end
+			end)
+			if #in_use > 0 then
+				return post_error("unregister",
+					"in use by " .. table.concat(in_use, ", "))
+			end
+			npc.proc.unregister_program(cmd.name)
+			post_event({
+				type = "program_unregistered",
+				name = cmd.name,
+				programs = list_programs()
+			})
+		end,
+
+		-- The selected NPC's variable storage (IDE watch panel):
+		-- proc = the current process's locals, global = global vars.
+		-- Values are plain JSON (tables/strings/numbers/bools); userdata
+		-- is stored as tracking records or itemstrings, so it serializes.
+		vars = function(cmd)
+			local ent = find_npc(cmd.npc_id)
+			if ent == nil then
+				return post_error("vars", "unknown npc: " .. tostring(cmd.npc_id))
+			end
+			local p = ent.process
+			local cur_id = p.current and p.current.id
+			local proc_vars = (ent.data and ent.data.proc and cur_id ~= nil)
+				and ent.data.proc[cur_id] or {}
+			local global_vars = (ent.data and ent.data.global) or {}
+			post_event({
+				type = "npc_vars",
+				npc_id = ent.npc_id,
+				program = p.current and p.current.name,
+				instruction = p.current and p.current.instruction,
+				vars = { proc = proc_vars, global = global_vars }
+			})
+		end,
+
 		state = function(cmd)
 			post_event({ type = "npc_state", npcs = list_npcs() })
 		end
@@ -506,6 +570,11 @@ return function(ie, http_api)
 	-----------------------------------------------------------------------------------
 
 	local busy = false
+
+	-- Liveness ping: the SPA's staleness detector queues a hello only
+	-- after the bridge goes SILENT (server restart / down), so on a quiet
+	-- world the bridge must prove it is alive: one cheap event per 30 s.
+	local alive_acc = 0
 
 	-- Track debug.pause transitions so the IDE is told when an NPC hits
 	-- a breakpoint (false -> true) or is resumed (true -> false).
@@ -540,6 +609,13 @@ return function(ie, http_api)
 	end
 
 	local function poll()
+		-- Liveness tick (runs even while a fetch is in flight): one
+		-- "alive" event per 30 s. post_event is a no-op without HTTP.
+		alive_acc = alive_acc + POLL_INTERVAL
+		if alive_acc >= 30 then
+			alive_acc = 0
+			post_event({ type = "alive" })
+		end
 		local ok, err = pcall(function()
 			poll_pause_transitions()
 			if busy or http_api == nil then
