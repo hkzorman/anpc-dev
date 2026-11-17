@@ -95,7 +95,11 @@ npc.proc.register_program("cat:eat", {
 npc.proc.register_program("cat:nap", {
 	{name = "npc:set_proc_interval", args = {value = 30}, srcmap = 1},
 	{name = "npc:model:set_animation", args = {name = "lay"}, srcmap = 2},
-	{name = "npc:jump_if", args = {expr = {left = {left = {left = "@time", op = ">", right = 20000}, op = "&&", right = {left = "@time", op = "<=", right = 24000}}, op = "||", right = {left = "@time", op = "<", right = 6000}}, offset = true, negate = false, pos = -1}, srcmap = 3},
+	-- Back-jump lands at N+P+1 (fast-path +1), so to loop back to instr 1
+	-- (re-set the 30 s interval + lay anim, re-check the time) P = 1-3-1 = -3.
+	-- (P was -1, which landed on instr 3 = itself: an infinite fast-path
+	-- recursion -> "stack overflow" every night while napping.)
+	{name = "npc:jump_if", args = {expr = {left = {left = {left = "@time", op = ">", right = 20000}, op = "&&", right = {left = "@time", op = "<=", right = 24000}}, op = "||", right = {left = "@time", op = "<", right = 6000}}, offset = true, negate = false, pos = -3}, srcmap = 3},
 	{name = "npc:set_proc_interval", args = {value = 0.5}, srcmap = 4},
 	{name = "npc:move:stand", args = {}, srcmap = 5}
 })
