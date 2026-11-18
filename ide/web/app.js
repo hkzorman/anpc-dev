@@ -677,6 +677,140 @@ $("log-toggle").onclick = () => {
 	$("log-toggle").textContent = f.classList.contains("hidden") ? "events" : "hide";
 };
 
+// ---------------------------------------------------------------------------
+// Instruction catalog (reference view, toggled from the header)
+// ---------------------------------------------------------------------------
+
+let catalog = null;      // [{name, category, summary, args, internal}]
+let catalogCat = null;   // selected category filter (null = all)
+
+async function loadCatalog() {
+	if (catalog) return;
+	try {
+		catalog = await get("/static/instructions.json");
+	} catch (e) {
+		catalog = [];
+		console.error("catalog load failed", e);
+	}
+}
+
+function catalogMatches(it, q) {
+	if (!q) return true;
+	const hay = (it.name + " " + (it.summary || "") + " " +
+		(it.args || []).map((a) => a.name).join(" ")).toLowerCase();
+	return hay.includes(q.toLowerCase());
+}
+
+function catalogCard(it) {
+	const card = document.createElement("div");
+	card.className = "instr-card" + (it.internal ? " internal" : "");
+	const head = document.createElement("div");
+	head.className = "instr-head";
+	const name = document.createElement("code");
+	name.className = "instr-name";
+	name.textContent = it.name;
+	head.appendChild(name);
+	if (it.internal) {
+		const badge = document.createElement("span");
+		badge.className = "instr-badge";
+		badge.textContent = "internal";
+		head.appendChild(badge);
+	}
+	card.appendChild(head);
+	if (it.summary) {
+		const sum = document.createElement("div");
+		sum.className = "instr-summary";
+		sum.textContent = it.summary;
+		card.appendChild(sum);
+	}
+	const args = it.args || [];
+	if (args.length) {
+		const tbl = document.createElement("table");
+		tbl.className = "instr-args";
+		for (const a of args) {
+			const tr = document.createElement("tr");
+			const tdN = document.createElement("td");
+			tdN.className = "arg-name";
+			tdN.textContent = a.name;
+			const tdT = document.createElement("td");
+			tdT.className = "arg-type";
+			tdT.textContent = a.type || "";
+			const tdD = document.createElement("td");
+			tdD.className = "arg-desc";
+			tdD.textContent = a.desc || "";
+			tr.appendChild(tdN); tr.appendChild(tdT); tr.appendChild(tdD);
+			tbl.appendChild(tr);
+		}
+		card.appendChild(tbl);
+	}
+	return card;
+}
+
+function renderCatalog() {
+	if (!catalog) return;
+	const q = $("catalog-search").value.trim();
+	const cats = {};
+	for (const it of catalog) (cats[it.category] = cats[it.category] || []).push(it);
+	// nav (category filter)
+	const nav = $("catalog-nav");
+	nav.textContent = "";
+	const mkNav = (label, cat, count) => {
+		const b = document.createElement("button");
+		b.className = "cat" + (catalogCat === cat ? " active" : "");
+		b.textContent = label + " (" + count + ")";
+		b.onclick = () => { catalogCat = (catalogCat === cat ? null : cat); renderCatalog(); };
+		nav.appendChild(b);
+	};
+	mkNav("all", null, catalog.length);
+	for (const c of Object.keys(cats)) mkNav(c, c, cats[c].length);
+	// body (cards, filtered)
+	const body = $("catalog-body");
+	body.textContent = "";
+	let shown = 0;
+	for (const c of Object.keys(cats)) {
+		if (catalogCat && catalogCat !== c) continue;
+		const items = cats[c].filter((it) => catalogMatches(it, q));
+		if (!items.length) continue;
+		const h = document.createElement("h3");
+		h.className = "catalog-cat-head";
+		h.textContent = c;
+		body.appendChild(h);
+		for (const it of items) { body.appendChild(catalogCard(it)); shown++; }
+	}
+	if (!shown) {
+		const p = document.createElement("p");
+		p.className = "muted";
+		p.textContent = q ? "no instructions match \u201C" + q + "\u201D" : "catalog is empty";
+		body.appendChild(p);
+	}
+	$("catalog-count").textContent = shown + " of " + catalog.length;
+}
+
+function openCatalog() {
+	loadCatalog().then(() => {
+		$("ide-view").classList.add("hidden");
+		$("catalog-view").classList.remove("hidden");
+		renderCatalog();
+		$("catalog-search").focus();
+	});
+}
+function closeCatalog() {
+	$("catalog-view").classList.add("hidden");
+	$("ide-view").classList.remove("hidden");
+	cm.refresh();
+}
+
+$("docs-toggle").onclick = openCatalog;
+$("catalog-close").onclick = closeCatalog;
+$("catalog-search").addEventListener("input", renderCatalog);
+// Esc closes the catalog no matter what has focus inside it.
+document.addEventListener("keydown", (e) => {
+	if (e.key === "Escape" && !$("catalog-view").classList.contains("hidden")) {
+		e.preventDefault();
+		closeCatalog();
+	}
+});
+
 // boot
 get("/api/state").then((s) => applyState(s)).catch(() => setServer(false));
 const es = new EventSource("/api/events");

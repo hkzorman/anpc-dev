@@ -13,11 +13,12 @@
 	<div class="world" id="world"></div>
 	<div class="spacer"></div>
 	<div class="server-indicator" id="server"><i></i><span id="server-text">connecting&hellip;</span></div>
+	<button id="docs-toggle" class="btn small" title="Browse the instruction catalog">instructions</button>
 	<button id="log-toggle" class="btn small" title="Show/hide event log">events</button>
 	<button id="theme-toggle" class="btn small" title="Toggle light/dark">&#9681;</button>
 </header>
 
-<main>
+<main id="ide-view">
 	<aside class="panel" id="programs-panel">
 		<div class="panel-head">programs <span class="count" id="program-count"></span>
 			<button id="new-program" class="btn small" title="New program">+</button>
@@ -79,6 +80,21 @@
 		</div>
 	</aside>
 </main>
+
+<section id="catalog-view" class="hidden">
+	<div class="catalog-head">
+		<span class="catalog-title">instruction catalog</span>
+		<input id="catalog-search" type="search" spellcheck="false"
+			placeholder="filter by name, keyword or argument&#8230;">
+		<span id="catalog-count" class="muted"></span>
+		<span class="spacer"></span>
+		<button id="catalog-close" class="btn small" title="Back to the editor (Esc)">&#10005; close</button>
+	</div>
+	<div class="catalog-layout">
+		<nav id="catalog-nav" class="catalog-nav"></nav>
+		<div id="catalog-body" class="catalog-body"></div>
+	</div>
+</section>
 
 <footer id="event-log" class="hidden">
 	<ol id="events"></ol>

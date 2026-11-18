@@ -1,0 +1,808 @@
+[
+  {
+    "name": "npc:break",
+    "category": "Process",
+    "summary": "Breaks out of the innermost loop containing the current instruction by jumping the instruction pointer to the instruction that marks the loop's end.",
+    "args": [],
+    "internal": true
+  },
+  {
+    "name": "npc:call",
+    "category": "Process",
+    "summary": "Compiler-generated function call: pushes an entry {key, index} onto the process call stack and jumps the instruction pointer to the function at the given index. The return is handled by npc:return.",
+    "args": [
+      { "name": "key", "type": "string", "desc": "Variable key that npc:return will store the returned value in (empty/nil if the result is not wanted)." },
+      { "name": "index", "type": "number", "desc": "Instruction index of the first instruction of the function being called." }
+    ],
+    "internal": true
+  },
+  {
+    "name": "npc:execute",
+    "category": "Process",
+    "summary": "Executes another program.",
+    "args": [
+      { "name": "name", "type": "string", "desc": "Name of the program to be executed. Must be the name of any program that is registered with `npc.proc.register_program`" },
+      { "name": "args", "type": "table", "desc": "Arguments for the program" }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:exit",
+    "category": "Process",
+    "summary": "Exits the current program: advances the instruction pointer past the last instruction of the program, so a new program will be picked up on the next entity step.",
+    "args": [],
+    "internal": false
+  },
+  {
+    "name": "npc:get_proc_interval",
+    "category": "Process",
+    "summary": "Returns the current process execution interval (in seconds).",
+    "args": [],
+    "internal": true
+  },
+  {
+    "name": "npc:jump",
+    "category": "Process",
+    "summary": "Sets the process's current instruction pointer. If offset is true, pos is added to the current instruction index; otherwise pos replaces it.",
+    "args": [
+      { "name": "pos", "type": "number", "desc": "Instruction position to jump to (or the relative offset when offset is true)." },
+      { "name": "offset", "type": "boolean", "desc": "If true, treat pos as a relative offset from the current instruction instead of an absolute position." }
+    ],
+    "internal": true
+  },
+  {
+    "name": "npc:jump_if",
+    "category": "Process",
+    "summary": "Evaluates a condition expression and, if the result is true (or false when negate is set), jumps the instruction pointer to pos (optionally as a relative offset).",
+    "args": [
+      { "name": "expr", "type": "mixed", "desc": "Condition to evaluate (expression/callable that yields a boolean)." },
+      { "name": "negate", "type": "boolean", "desc": "If true, the condition is negated before the jump decision." },
+      { "name": "pos", "type": "number", "desc": "Instruction position to jump to (or relative offset when offset is true)." },
+      { "name": "offset", "type": "boolean", "desc": "If true, treat pos as a relative offset from the current instruction." }
+    ],
+    "internal": true
+  },
+  {
+    "name": "npc:return",
+    "category": "Process",
+    "summary": "Compiler-generated function return: pops the top entry of the call stack, stores the returned value in the variable named by the entry's key (if any), and restores the instruction pointer.",
+    "args": [
+      { "name": "value", "type": "mixed", "desc": "Value returned by the function call; stored in the variable key recorded by npc:call." }
+    ],
+    "internal": true
+  },
+  {
+    "name": "npc:set_default_program",
+    "category": "Process",
+    "summary": "Sets the given program as the NPC's default (state) process - the program that runs continuously - optionally with arguments.",
+    "args": [
+      { "name": "name", "type": "string", "desc": "Name of the program to set as the default (state) process." },
+      { "name": "args", "type": "table", "desc": "Arguments passed to the default program." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:set_proc_interval",
+    "category": "Process",
+    "summary": "Sets the process execution interval (in seconds) to the given value, controlling how often the process steps.",
+    "args": [
+      { "name": "value", "type": "number", "desc": "New process interval in seconds." }
+    ],
+    "internal": true
+  },
+  {
+    "name": "npc:var:get",
+    "category": "Process",
+    "summary": "Reads the value of the named process variable and returns it.",
+    "args": [
+      { "name": "key", "type": "string", "desc": "Name of the variable to read (may use @storage prefixes and subkey syntax)." }
+    ],
+    "internal": true
+  },
+  {
+    "name": "npc:var:set",
+    "category": "Process",
+    "summary": "Sets the named process variable to the given value, with storage and userdata-type handling for non-serializable values.",
+    "args": [
+      { "name": "key", "type": "string", "desc": "Name of the variable to set (may use @storage prefixes and subkey syntax)." },
+      { "name": "value", "type": "mixed", "desc": "Value to store." },
+      { "name": "userdata_type", "type": "string", "desc": "How userdata values are stored (e.g. \"object\"); defaults to \"object\"." },
+      { "name": "storage_type", "type": "string", "desc": "Storage to write to: \"local\", \"global\", \"temp\" or \"args\"; defaults from the key prefix or \"local\"." }
+    ],
+    "internal": true
+  },
+  {
+    "name": "npc:wait",
+    "category": "Process",
+    "summary": "Stop process execution for the desired time. This is not a busy wait, it instead changes the process interval in the right way.",
+    "args": [
+      { "name": "time", "type": "number", "desc": "The time to wait, in seconds. Decimal values are supported, but it should be taken into account that it should never be smaller than `dtime` (the server's step time). This is not validated." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:get_pos",
+    "category": "Movement",
+    "summary": "Returns the NPC's own position, optionally rounded to integers.",
+    "args": [
+      { "name": "round", "type": "boolean", "desc": "If true, the returned position is rounded using vector.round()." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:jump",
+    "category": "Movement",
+    "summary": "Launches the NPC in a ballistic arc toward the target position (handling step-ups and drops) and arms a low-latency landing task that keeps the jump alive until it lands.",
+    "args": [
+      { "name": "target_pos", "type": "table", "desc": "Position (x/y/z) to jump towards." },
+      { "name": "range", "type": "number", "desc": "Horizontal distance the NPC will move on the jump (default 1)." },
+      { "name": "speed", "type": "number", "desc": "Base speed used to derive the jump arc (default 1)." },
+      { "name": "middle", "type": "boolean", "desc": "If true, jump to the middle of the target block instead of the cell corner." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:rotate",
+    "category": "Movement",
+    "summary": "Turns the NPC (yaw only, no movement) so it faces the given target position.",
+    "args": [
+      { "name": "target_pos", "type": "table", "desc": "Position (x/y/z) the NPC should face." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:stand",
+    "category": "Movement",
+    "summary": "Stops the NPC: zeroes its velocity and plays the \"stand\" animation once.",
+    "args": [],
+    "internal": false
+  },
+  {
+    "name": "npc:move:to_pos",
+    "category": "Movement",
+    "summary": "Instantly moves the NPC to the given position (engine move_to, without collision handling).",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) to move the NPC to." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:walk",
+    "category": "Movement",
+    "summary": "Sets the NPC in motion towards a direction (by target position, yaw, or cardinal direction) at a given speed. It does not provide pathfinding and does not stop the NPC once in motion; use npc:move:stand to stop it.",
+    "args": [
+      { "name": "speed", "type": "number", "desc": "Walk speed in m/s (default 2)." },
+      { "name": "target_pos", "type": "table", "desc": "Position to rotate towards and walk towards (optional direction mode)." },
+      { "name": "yaw", "type": "number", "desc": "Yaw to rotate to and walk in that direction (optional direction mode)." },
+      { "name": "cardinal_dir", "type": "number", "desc": "Cardinal direction 0-7, representing north to north-west in a clockwise fashion (optional direction mode)." },
+      { "name": "start_pos", "type": "table", "desc": "Position the NPC walks from (defaults to the NPC's current rounded position)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:walk_to_cell_ll",
+    "category": "Movement",
+    "summary": "Low-latency cell-arrival entry point for continuous following: walks to the goal cell (block-middle), and if the initial plan fails while following a leader, falls back to the slot ladder / direct steering instead of freezing.",
+    "args": [
+      { "name": "target_pos", "type": "table", "desc": "Goal cell position (x/y/z) to walk to, typically the result of npc:nav:follow_goal." },
+      { "name": "target", "type": "userdata", "desc": "Target object to walk towards; its live position is used (alternative to target_pos)." },
+      { "name": "speed", "type": "number", "desc": "Walk speed in m/s; when omitted it is derived from the leader's speed with catch-up hysteresis (or 5 m/s without a follow session)." },
+      { "name": "target_distance", "type": "number", "desc": "Arrival distance in meters (default 1.5)." },
+      { "name": "middle", "type": "boolean", "desc": "Walk/arrive at block-middle rather than cell-corner." },
+      { "name": "door_close", "type": "string", "desc": "\"immediate\" (default), \"pause\" or \"none\" - how a door is closed after the NPC passes through it." },
+      { "name": "check_end_pos_walkable", "type": "boolean", "desc": "If true, the end position is converted to a position the NPC can access/stand at." },
+      { "name": "look_at_target", "type": "mixed", "desc": "Whether to look at the target while walking." },
+      { "name": "original_target_pos", "type": "table", "desc": "Original target position before accessibility adjustment (used by the steering fallback)." },
+      { "name": "force", "type": "boolean", "desc": "If no path can be found, move_to the target directly instead of failing." },
+      { "name": "min_self_move_distance", "type": "number", "desc": "Minimum self movement that counts as progress for stuck detection (default 0.25)." },
+      { "name": "min_trgt_move_distance", "type": "number", "desc": "Minimum target movement that counts as progress for stuck detection (default 0.25)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:walk_to_pos",
+    "category": "Movement",
+    "summary": "Walks the NPC along a planned path to the target position (block-middle by default), handling stairs/slabs, jumps and doors via a per-tick low-latency task. Returns true when already arrived, false while moving, nil when the walk fails.",
+    "args": [
+      { "name": "target_pos", "type": "table", "desc": "Target cell position (x/y/z) to walk to." },
+      { "name": "target", "type": "userdata", "desc": "Target object to walk towards; its live position is used (alternative to target_pos)." },
+      { "name": "speed", "type": "number", "desc": "Walk speed in m/s (default 2); also drives how frequently the process re-arms while moving." },
+      { "name": "target_distance", "type": "number", "desc": "Arrival distance in meters (default 1.5)." },
+      { "name": "middle", "type": "boolean", "desc": "Walk/arrive at block-middle rather than cell-corner (defaults to on for this instruction)." },
+      { "name": "door_close", "type": "string", "desc": "\"immediate\" (default), \"pause\" or \"none\" - how a door is closed after the NPC passes through it." },
+      { "name": "check_end_pos_walkable", "type": "boolean", "desc": "If true, the end position is converted to a position the NPC can access/stand at." },
+      { "name": "look_at_target", "type": "mixed", "desc": "Whether to look at the target while walking." },
+      { "name": "original_target_pos", "type": "table", "desc": "Original target position before accessibility adjustment (used by the steering fallback)." },
+      { "name": "force", "type": "boolean", "desc": "If no path can be found, move_to the target directly instead of failing." },
+      { "name": "min_self_move_distance", "type": "number", "desc": "Minimum self movement that counts as progress for stuck detection (default 0.25)." },
+      { "name": "min_trgt_move_distance", "type": "number", "desc": "Minimum target movement that counts as progress for stuck detection (default 0.25)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:move:walk_to_pos_ll",
+    "category": "Movement",
+    "summary": "Low-latency entry point: walks the NPC to the target at a fixed speed of 3 m/s with distance-based arrival (1.5 m), driven by the per-tick low-latency walk task.",
+    "args": [
+      { "name": "target_pos", "type": "table", "desc": "Target cell position (x/y/z) to walk to." },
+      { "name": "target", "type": "userdata", "desc": "Target object to walk towards; its live position is used (alternative to target_pos)." },
+      { "name": "speed", "type": "number", "desc": "Walk speed in m/s; if omitted, the entry default of 3 m/s applies." },
+      { "name": "target_distance", "type": "number", "desc": "Arrival distance in meters (default 1.5)." },
+      { "name": "middle", "type": "boolean", "desc": "Walk/arrive at block-middle rather than cell-corner." },
+      { "name": "door_close", "type": "string", "desc": "\"immediate\" (default), \"pause\" or \"none\" - how a door is closed after the NPC passes through it." },
+      { "name": "check_end_pos_walkable", "type": "boolean", "desc": "If true, the end position is converted to a position the NPC can access/stand at." },
+      { "name": "look_at_target", "type": "mixed", "desc": "Whether to look at the target while walking." },
+      { "name": "original_target_pos", "type": "table", "desc": "Original target position before accessibility adjustment (used by the steering fallback)." },
+      { "name": "force", "type": "boolean", "desc": "If no path can be found, move_to the target directly instead of failing." },
+      { "name": "min_self_move_distance", "type": "number", "desc": "Minimum self movement that counts as progress for stuck detection (default 0.25)." },
+      { "name": "min_trgt_move_distance", "type": "number", "desc": "Minimum target movement that counts as progress for stuck detection (default 0.25)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:nav:follow_goal",
+    "category": "Movement",
+    "summary": "Computes the follow goal cell for a leader (behind or ahead of the leader's predicted cell at a given distance/lead), updates the follow session (distance, speed, catch-up gap), and returns the goal cell for storing in a program variable.",
+    "args": [
+      { "name": "name", "type": "string", "desc": "Name of the leader (player or entity) to follow." },
+      { "name": "object", "type": "userdata", "desc": "ObjectRef of the leader to follow (alternative to name)." },
+      { "name": "mode", "type": "string", "desc": "Follow mode: \"ahead\" or behind (default when omitted)." },
+      { "name": "distance", "type": "number", "desc": "Follow distance in cells (default 2)." },
+      { "name": "lead", "type": "number", "desc": "Lead in cells applied to the goal cell (default 0 = the leader's current cell)." },
+      { "name": "catch_up", "type": "number", "desc": "Catch-up gap in cells at which the follower resumes walking and switches to the catch-up speed (default 2x the follow distance)." },
+      { "name": "speed", "type": "number", "desc": "Walk speed in m/s; overrides the speed derived from the leader's walk speed." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:chat:send_player",
+    "category": "Environment",
+    "summary": "Sends a chat message to a specific player.",
+    "args": [
+      { "name": "player", "type": "string", "desc": "Name of the player to send the message to." },
+      { "name": "message", "type": "string", "desc": "Chat message to send." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:find_path",
+    "category": "Environment",
+    "summary": "Finds a path from a start position to an end position and stores it in the process-local `current_path` variable (nil when no path exists).",
+    "args": [
+      { "name": "end_pos", "type": "table", "desc": "End position (x/y/z) of the path." },
+      { "name": "start_pos", "type": "table", "desc": "Start position of the path (defaults to the NPC's current rounded position)." },
+      { "name": "decorate", "type": "boolean", "desc": "If true, the returned path is decorated with per-step node type information." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:can_stand_in",
+    "category": "Environment",
+    "summary": "Checks whether the NPC can stand at the given position: the node below is walkable, there is vertical clearance for the NPC to fit, and there is a walkable node to stand in.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the cell the NPC would stand in." },
+      { "name": "horizontal_radius", "type": "number", "desc": "Optional horizontal clearance radius to check around the NPC (not yet implemented)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:dig",
+    "category": "Environment",
+    "summary": "Digs (breaks) the node at the given position, playing the mining animation once.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node to dig." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:find",
+    "category": "Environment",
+    "summary": "Finds nodes matching given names or categories within a radius or area, optionally filtered by ownership/usage, and returns an array of positions (nil if none found).",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Center of the search (defaults to the NPC's rounded position)." },
+      { "name": "radius", "type": "number", "desc": "Search radius (defaults to the env view range); required if min_pos and max_pos are not given." },
+      { "name": "min_pos", "type": "table", "desc": "One corner of the search area (required together with max_pos)." },
+      { "name": "max_pos", "type": "table", "desc": "Other corner of the search area (required together with min_pos)." },
+      { "name": "nodenames", "type": "table", "desc": "Array of node names to find; required if categories is not given." },
+      { "name": "categories", "type": "table", "desc": "Array of node category names to find; required if nodenames is not given." },
+      { "name": "single_match", "type": "boolean", "desc": "Find only one node and return that node (optional, default true)." },
+      { "name": "owned_only", "type": "boolean", "desc": "If true, only return nodes owned by the NPC (optional, default not checked)." },
+      { "name": "used_only", "type": "boolean", "desc": "If true, only find used nodes; if false, only find un-used nodes (optional, default not checked)." },
+      { "name": "y_radius", "type": "number", "desc": "Vertical radius used when deriving the search area from radius (defaults to radius)." },
+      { "name": "y_offset", "type": "number", "desc": "Vertical offset applied to the derived search area center (default 0)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:get",
+    "category": "Environment",
+    "summary": "Returns the node (name, param1, param2) at the given position.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node to get." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:get_accessing_pos",
+    "category": "Environment",
+    "summary": "Returns a position from where the NPC can approach or access another position, e.g. the passable cell in front of a facedir node or a neighbouring passable cell (falling back to the given position when nothing suitable is found).",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Target node position (x/y/z) to be accessed." },
+      { "name": "force", "type": "boolean", "desc": "If true, force searching for an accessing position even if the target node is walkable." },
+      { "name": "search_method", "type": "string", "desc": "Search method: \"prefer_first\" (default) or \"prefer_closest\"." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:get_metadata",
+    "category": "Environment",
+    "summary": "Returns the node metadata object for the given position.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node whose metadata is read." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:get_property",
+    "category": "Environment",
+    "summary": "Reads a registered property of the node at the given position via the node's property handlers.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node." },
+      { "name": "property", "type": "string", "desc": "Name of the registered node property to read." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:is_owner",
+    "category": "Environment",
+    "summary": "Returns true if the node at the position is owned by this NPC, false if it is owned by someone else, and nil if it is unowned.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node to check." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:is_user",
+    "category": "Environment",
+    "summary": "Returns true if the node at the position is in use by this NPC, false if it is in use by someone else, and nil if it is unused.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node to check." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:operate",
+    "category": "Environment",
+    "summary": "Runs the operation registered for the node at the given position (node type dispatched to its handler); any additional arguments are passed through to that node's operation.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node to operate on; remaining operation-specific arguments are passed through to the node's registered operation." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:place",
+    "category": "Environment",
+    "summary": "Places a node at the given position (only where it is empty or buildable-to), honoring protection and the item source, playing the mining animation and the node's place sound.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) where the node is placed." },
+      { "name": "node", "type": "string", "desc": "Name of the node to place." },
+      { "name": "param1", "type": "number", "desc": "param1 of the placed node." },
+      { "name": "param2", "type": "number", "desc": "param2 of the placed node." },
+      { "name": "source", "type": "string", "desc": "Where the item comes from: \"take\" (from inventory), \"take_or_forced\" or \"forced\" (default)." },
+      { "name": "bypass_protection", "type": "boolean", "desc": "Skip protection checks (default false)." },
+      { "name": "play_sound", "type": "boolean", "desc": "Play the node's place sound (default true)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:set",
+    "category": "Environment",
+    "summary": "Sets the node at the given position directly via minetest.set_node, without checking protection or whether the node is buildable, playing the mining animation once.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node to set." },
+      { "name": "node", "type": "string", "desc": "Name of the node to set." },
+      { "name": "param1", "type": "number", "desc": "param1 of the set node." },
+      { "name": "param2", "type": "number", "desc": "param2 of the set node." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:set_metadata",
+    "category": "Environment",
+    "summary": "Sets the infotext metadata string of the node at the given position.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node." },
+      { "name": "meta", "type": "string", "desc": "Infotext string to set on the node metadata." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:set_owned",
+    "category": "Environment",
+    "summary": "Marks the node at the position as owned by this NPC (adding it to the node store), or releases ownership (removing it from the store and clearing the attribute). Returns true on success, false when the NPC cannot change ownership.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node." },
+      { "name": "value", "type": "boolean", "desc": "true to mark the node as owned, false to release ownership." },
+      { "name": "label", "type": "string", "desc": "Label to store with the node in the node store." },
+      { "name": "categories", "type": "table", "desc": "Array of store categories (default {\"generic\"})." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:set_used",
+    "category": "Environment",
+    "summary": "Marks the node at the position as in use by this NPC, or releases the mark when value is false. Returns true on success, false when the NPC cannot change the mark.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node." },
+      { "name": "value", "type": "boolean", "desc": "true to mark the node as in use, false to release the mark." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:store:add",
+    "category": "Environment",
+    "summary": "Adds a node to the NPC's node store under the given categories, keeping track of nodes the NPC cares about.",
+    "args": [
+      { "name": "categories", "type": "table", "desc": "Array of category names to store the node under." },
+      { "name": "name", "type": "string", "desc": "Name of the node." },
+      { "name": "label", "type": "string", "desc": "Label for the node." },
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node." },
+      { "name": "is_primary", "type": "boolean", "desc": "Whether the node is a primary node of the category (default false)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:store:get",
+    "category": "Environment",
+    "summary": "Returns stored nodes from the NPC's node store matching the given filters, as a list (or a single entry when only_one is set).",
+    "args": [
+      { "name": "categories", "type": "table", "desc": "Array of categories to search." },
+      { "name": "name", "type": "string", "desc": "Filter by node name (optional)." },
+      { "name": "label", "type": "string", "desc": "Filter by label (optional)." },
+      { "name": "pos", "type": "table", "desc": "Filter by position (optional)." },
+      { "name": "is_primary", "type": "boolean", "desc": "Filter to only primary nodes (optional)." },
+      { "name": "only_one", "type": "boolean", "desc": "If true, return the first matching node instead of a list." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:node:store:remove",
+    "category": "Environment",
+    "summary": "Removes stored nodes at the given position from the given categories of the NPC's node store; returns true if anything was removed.",
+    "args": [
+      { "name": "categories", "type": "table", "desc": "Array of categories to remove from." },
+      { "name": "pos", "type": "table", "desc": "Position (x/y/z) of the node to remove." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:env:prioritize",
+    "category": "Environment",
+    "summary": "Prioritizes an object in the NPC's environment object array based on the given criteria; the prioritized item is swapped to the front of the array.",
+    "args": [
+      { "name": "distance", "type": "mixed", "desc": "Distance criteria: \"min\", \"max\", or an integer number." },
+      { "name": "entity_type", "type": "string", "desc": "Object type to prioritize: \"player\", \"npc\" or \"monster\"." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:obj:get_dir",
+    "category": "Objects",
+    "summary": "Returns the direction vector (x/y/z) the given object is facing (derived from its yaw), optionally rounded.",
+    "args": [
+      { "name": "object", "type": "userdata", "desc": "Object (ObjectRef) to query." },
+      { "name": "round", "type": "boolean", "desc": "If true, the returned vector is rounded using vector.round()." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:obj:get_hp",
+    "category": "Objects",
+    "summary": "Returns the health (HP) of the given object.",
+    "args": [
+      { "name": "object", "type": "userdata", "desc": "Object (ObjectRef) to query." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:obj:get_pos",
+    "category": "Objects",
+    "summary": "Returns the position of the given object, optionally rounded.",
+    "args": [
+      { "name": "object", "type": "userdata", "desc": "Object (ObjectRef) to query." },
+      { "name": "round", "type": "boolean", "desc": "If true, the returned position is rounded using vector.round()." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:obj:get_velocity",
+    "category": "Objects",
+    "summary": "Returns the velocity vector of the given object, optionally rounded.",
+    "args": [
+      { "name": "object", "type": "userdata", "desc": "Object (ObjectRef) to query." },
+      { "name": "round", "type": "boolean", "desc": "If true, the returned vector is rounded using vector.round()." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:obj:get_yaw",
+    "category": "Objects",
+    "summary": "Returns the yaw of the given object.",
+    "args": [
+      { "name": "object", "type": "userdata", "desc": "Object (ObjectRef) to query." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:obj:punch",
+    "category": "Objects",
+    "summary": "Punches (attacks) a target object: faces it, plays the swing animation and fires the engine punch with the given damage group, enforcing a per-NPC punch cooldown. Returns \"punched\", \"cooldown\", \"out_of_reach\" or \"no_target\".",
+    "args": [
+      { "name": "object", "type": "userdata", "desc": "ObjectRef of the target (e.g. from @objs.get[...])" },
+      { "name": "name", "type": "string", "desc": "Target name, player or entity (alternative to object)" },
+      { "name": "max_reach", "type": "number", "desc": "Punch reach in m (default 2)" },
+      { "name": "interval", "type": "number", "desc": "Seconds between punches (default 0.7)" },
+      { "name": "damage", "type": "number", "desc": "Damage dealt by a full-strength punch (default 1)" },
+      { "name": "damage_group", "type": "string", "desc": "Target damage group the damage applies to (default \"fleshy\" - the group players belong to)" },
+      { "name": "animation", "type": "string", "desc": "Swing animation (default \"punch\"; falls back to \"mine_once\" when the model has no \"punch\")" },
+      { "name": "sound", "type": "string", "desc": "Sound name to play at the NPC (optional)" }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:contains",
+    "category": "Inventory",
+    "summary": "Returns whether the inventory can fully provide the given item (at least the given count, default 1), name-based and summed across slots.",
+    "args": [
+      { "name": "item", "type": "mixed", "desc": "Item to check: an itemstring (e.g. \"default:wood\") or an ItemStack." },
+      { "name": "list", "type": "string", "desc": "Inventory list to check (default \"main\")." },
+      { "name": "count", "type": "number", "desc": "Number of items required (default at least 1)." },
+      { "name": "pos", "type": "table", "desc": "If given, operate on the node inventory at this position instead of the NPC's own." },
+      { "name": "player", "type": "string", "desc": "If given, operate on this player's inventory instead of the NPC's own." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:get",
+    "category": "Inventory",
+    "summary": "Returns the ItemStack in the given slot of the given list, or nil when the slot is empty.",
+    "args": [
+      { "name": "index", "type": "number", "desc": "Slot index in the list." },
+      { "name": "list", "type": "string", "desc": "Inventory list to read from (default \"main\")." },
+      { "name": "pos", "type": "table", "desc": "If given, operate on the node inventory at this position instead of the NPC's own." },
+      { "name": "player", "type": "string", "desc": "If given, operate on this player's inventory instead of the NPC's own." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:hand",
+    "category": "Inventory",
+    "summary": "Returns the NPC's held item (the \"hand\" slot), or nil when nothing is held.",
+    "args": [],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:list",
+    "category": "Inventory",
+    "summary": "Returns the non-empty ItemStacks of the given list in slot order, with trailing empty slots trimmed (nil when the inventory/list cannot be resolved).",
+    "args": [
+      { "name": "list", "type": "string", "desc": "Inventory list to list (default \"main\")." },
+      { "name": "pos", "type": "table", "desc": "If given, operate on the node inventory at this position instead of the NPC's own." },
+      { "name": "player", "type": "string", "desc": "If given, operate on this player's inventory instead of the NPC's own." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:put",
+    "category": "Inventory",
+    "summary": "Puts an item into the inventory: with index it replaces that slot and returns the displaced stack; without index it adds the item and returns the leftover (nil when everything was placed).",
+    "args": [
+      { "name": "item", "type": "mixed", "desc": "Item to put: an itemstring (e.g. \"default:wood\", \"default:wood 5\") or an ItemStack." },
+      { "name": "list", "type": "string", "desc": "Inventory list to put into (default \"main\")." },
+      { "name": "index", "type": "number", "desc": "If given, replace this slot; otherwise the item is added." },
+      { "name": "pos", "type": "table", "desc": "If given, operate on the node inventory at this position instead of the NPC's own." },
+      { "name": "player", "type": "string", "desc": "If given, operate on this player's inventory instead of the NPC's own." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:remove",
+    "category": "Inventory",
+    "summary": "Removes items from the inventory, either by item (name/itemstring, optional count, matched anywhere in the list) or from one slot (index, optional count). Returns the ItemStack actually removed, or nil.",
+    "args": [
+      { "name": "item", "type": "mixed", "desc": "Item to remove by name (itemstring or ItemStack); used when index is not given." },
+      { "name": "index", "type": "number", "desc": "If given, remove from this slot instead of by item." },
+      { "name": "count", "type": "number", "desc": "Number of items to remove (default: the whole slot/stack)." },
+      { "name": "list", "type": "string", "desc": "Inventory list to remove from (default \"main\")." },
+      { "name": "pos", "type": "table", "desc": "If given, operate on the node inventory at this position instead of the NPC's own." },
+      { "name": "player", "type": "string", "desc": "If given, operate on this player's inventory instead of the NPC's own." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:room_for",
+    "category": "Inventory",
+    "summary": "Returns how much of the given item fits into the given list (the room available for it).",
+    "args": [
+      { "name": "item", "type": "mixed", "desc": "Item to check room for (itemstring or ItemStack)." },
+      { "name": "list", "type": "string", "desc": "Inventory list to check (default \"main\")." },
+      { "name": "pos", "type": "table", "desc": "If given, operate on the node inventory at this position instead of the NPC's own." },
+      { "name": "player", "type": "string", "desc": "If given, operate on this player's inventory instead of the NPC's own." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:size",
+    "category": "Inventory",
+    "summary": "Resizes (or creates) the given inventory list to the given size; node inventories have fixed sizes and will fail to resize.",
+    "args": [
+      { "name": "size", "type": "number", "desc": "New size (slot count) of the list." },
+      { "name": "list", "type": "string", "desc": "Inventory list to resize (default \"main\")." },
+      { "name": "pos", "type": "table", "desc": "If given, operate on the node inventory at this position instead of the NPC's own." },
+      { "name": "player", "type": "string", "desc": "If given, operate on this player's inventory instead of the NPC's own." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:take_from",
+    "category": "Inventory",
+    "summary": "Takes items from another inventory (a chest/node via pos, a player via player - the source must be explicit) into the NPC's own inventory. Nothing is dropped: whatever does not fit is returned as leftover. Returns {taken = ItemStack, leftover = ItemStack or nil}, or nil when nothing could be taken.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "Position of the node inventory (e.g. a chest) to take from." },
+      { "name": "player", "type": "string", "desc": "Name of the player to take from (alternative to pos)." },
+      { "name": "list", "type": "string", "desc": "Source inventory list to take from (default \"main\")." },
+      { "name": "index", "type": "number", "desc": "If given, take from this specific slot of the source." },
+      { "name": "count", "type": "number", "desc": "Number of items to take (default: the whole slot/stack)." },
+      { "name": "item", "type": "mixed", "desc": "Item to take by name (itemstring or ItemStack); used when index is not given." },
+      { "name": "to", "type": "string", "desc": "Destination list in the NPC's own inventory (default \"main\")." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:inv:wield",
+    "category": "Inventory",
+    "summary": "Sets (or clears, with no item) the NPC's held item by replacing the \"hand\" slot and syncing the engine's wielded item; returns true on success.",
+    "args": [
+      { "name": "item", "type": "mixed", "desc": "Item to hold (itemstring or ItemStack); omit to clear the hand." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:timer:instr:start",
+    "category": "Timers",
+    "summary": "Compiler-generated control instruction: arms the per-instruction timer (resets it to 0) so that individual instructions are timed/stepped by the interpreter.",
+    "args": [],
+    "internal": true
+  },
+  {
+    "name": "npc:timer:instr:stop",
+    "category": "Timers",
+    "summary": "Compiler-generated control instruction: disables the per-instruction timer.",
+    "args": [],
+    "internal": true
+  },
+  {
+    "name": "npc:timer:register",
+    "category": "Timers",
+    "summary": "Registers a timer with the current process: a named timer with an interval, an initial value, an optional maximum execution count and a function body (compiler-generated from the timer's instruction list).",
+    "args": [
+      { "name": "name", "type": "string", "desc": "Name of the timer to register." },
+      { "name": "interval", "type": "number", "desc": "Timer interval in seconds between executions." },
+      { "name": "initial_value", "type": "number", "desc": "Initial value of the timer (default 0)." },
+      { "name": "times_to_run", "type": "number", "desc": "Maximum number of executions before the timer stops (optional)." },
+      { "name": "timer_func_index", "type": "number", "desc": "Instruction index of the first instruction of the timer's function body (compiler-generated)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:timer:start",
+    "category": "Timers",
+    "summary": "Starts (enables) the named process timer.",
+    "args": [
+      { "name": "name", "type": "string", "desc": "Name of the timer to start." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:timer:stop",
+    "category": "Timers",
+    "summary": "Stops (disables) the named process timer.",
+    "args": [
+      { "name": "name", "type": "string", "desc": "Name of the timer to stop." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:model:set_animation",
+    "category": "Model",
+    "summary": "Plays the named animation of the NPC's model at a given speed, optionally playing another animation after a non-looping one finishes.",
+    "args": [
+      { "name": "name", "type": "string", "desc": "Name of the animation registered on the NPC's model." },
+      { "name": "speed", "type": "number", "desc": "Animation speed; defaults to the animation's registered speed or 30." },
+      { "name": "animation_after", "type": "string", "desc": "Animation to play after this one finishes (applies only when the animation does not loop)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:distance_to",
+    "category": "Math/Utils",
+    "summary": "Returns the distance from the NPC to a given node or object.",
+    "args": [
+      { "name": "pos", "type": "table", "desc": "table, with x, y and z. If given, will return the distance to the given position. Shouldn't be used together with `object`" },
+      { "name": "object", "type": "userdata", "desc": "If given, will return distance from NPC to given object at that time. Shouldn't be used together with `pos`" },
+      { "name": "round", "type": "boolean", "desc": "If given, will round distance value using `vector.round()`" }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:random",
+    "category": "Math/Utils",
+    "summary": "Returns a random number in the given range. Same as Lua's `math.random`.",
+    "args": [
+      { "name": "start", "type": "number", "desc": "The beginning of the range" },
+      { "name": "end", "type": "number", "desc": "The end of the range" }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:util:str:replace",
+    "category": "Math/Utils",
+    "summary": "Returns a copy of the string with occurrences of the target replaced by the replacement value (Lua string.gsub).",
+    "args": [
+      { "name": "str", "type": "string", "desc": "Source string to perform the replacement on." },
+      { "name": "target", "type": "string", "desc": "Pattern/text to look for in str." },
+      { "name": "replacement", "type": "string", "desc": "Replacement text for matches of target." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:util:vector:add",
+    "category": "Math/Utils",
+    "summary": "Returns the sum of two vectors (or vector plus a scalar applied to all components).",
+    "args": [
+      { "name": "x", "type": "table", "desc": "Vector (x/y/z)." },
+      { "name": "y", "type": "mixed", "desc": "Vector (component-wise operation) or number (same value added to all components)." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:util:vector:divide",
+    "category": "Math/Utils",
+    "summary": "Returns the component-wise division of two vectors (vector.divide).",
+    "args": [
+      { "name": "x", "type": "table", "desc": "Vector (x/y/z) to divide." },
+      { "name": "y", "type": "table", "desc": "Vector (x/y/z) to divide by." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:util:vector:multiply",
+    "category": "Math/Utils",
+    "summary": "Returns the component-wise multiplication of two vectors (vector.multiply).",
+    "args": [
+      { "name": "x", "type": "table", "desc": "Vector (x/y/z) to multiply." },
+      { "name": "y", "type": "table", "desc": "Vector (x/y/z) to multiply by." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:util:vector:subtract",
+    "category": "Math/Utils",
+    "summary": "Returns the component-wise difference of two vectors (vector.subtract).",
+    "args": [
+      { "name": "x", "type": "table", "desc": "Vector (x/y/z) to subtract from." },
+      { "name": "y", "type": "table", "desc": "Vector (x/y/z) to subtract." }
+    ],
+    "internal": false
+  },
+  {
+    "name": "npc:debug",
+    "category": "Debug",
+    "summary": "Logs a debug message to the server log, with an optional value dumped alongside it.",
+    "args": [
+      { "name": "msg", "type": "string", "desc": "Message to log." },
+      { "name": "val", "type": "mixed", "desc": "Optional value to dump (via dump()) after the message." }
+    ],
+    "internal": false
+  }
+]

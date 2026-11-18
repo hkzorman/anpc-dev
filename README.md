@@ -1,5 +1,5 @@
 # anpc-dev
-Development documentation, tools and examples  for `anpc` Minetest mod.
+Development documentation, tools and examples for `anpc` Minetest mod.
 
 For programming reference, please see [the API doc](https://github.com/hkzorman/anpc-dev/blob/main/programming_api.md)
 
@@ -12,49 +12,184 @@ registered + executed inside the server by the `ide_bridge` component
 of this mod. The IDE backend is a single Python process that also
 serves the web UI (editor + compiler + debug panel).
 
-### Server setup
+### How it works
 
-The bridge needs two settings in the **server** configuration (the
-conf file passed to `luanti --server`, e.g. `server.conf`):
+Three cooperating parts, all on the machine that hosts the server:
 
-    secure.http_mods    = anpc_dev
-    secure.trusted_mods = anpc_dev
+| Component | Where | Role |
+|---|---|---|
+| `ide/anpc_ide.py` | host, binds `127.0.0.1:8765` | One Python (stdlib-only) process: serves the web UI, runs the compiler, owns the program store in the world directory, brokers commands/events between browser and bridge |
+| `ide_bridge.lua` | inside the running Luanti server (mod `anpc_dev`) | Polls the backend for commands, posts events back; loads programs, arms breakpoints, and gives run control (run / execute / pause / resume / stop) plus variable dumps |
+| `ide/web/` | browser | Vanilla-JS SPA (editor with vendored CodeMirror 5, compiled-Lua viewer, breakpoint gutter, debug + NPC panels, event log, instruction catalog). No build step, no npm |
 
-- `secure.http_mods` lets the mod make outbound HTTP requests. Luanti
-  has no inbound server sockets, so the bridge *polls* the IDE
-  (`GET /luanti/command` about once per second) and reports back with
-  `POST /luanti/event`.
-- `secure.trusted_mods` lets the mod obtain the pre-sandbox Lua
-  environment (`core.request_insecure_environment`). That is how it
-  reads the program files from the world directory and executes the
-  compiled code with `load(string)` - both of which the normal mod
-  sandbox blocks.
+**Data flow (save → run):**
 
-Both settings name `anpc_dev` explicitly; no other mod is affected.
-The trust flag is a real security exception: with it, `anpc_dev` can
-execute code it reads from the world directory. Keep the world and the
-IDE on machines you trust with server access.
+1. The SPA sends the whole `.anpcscript` source with `POST /api/save`.
+2. The backend recompiles the *entire* source file (one file can hold
+   several programs), writes the compiled `.lua` + `manifest.txt` into
+   `<world>/anpc_programs/`, and queues a `load_program` command.
+3. The bridge polls `GET /luanti/command` about once per second (Luanti
+   has no inbound server sockets — only outbound HTTP via
+   `secure.http_mods`), picks up the command, and executes the new file
+   with the pre-sandbox `load()` (needs `secure.trusted_mods`), which
+   registers the program on the *live* server — no restart.
+4. Events travel the other way: the bridge `POST /luanti/event`s results
+   (`program_loaded` with diagnostics, `breakpoints_set`, pause events,
+   `npc_vars`, ...), the backend fans them out to every open browser
+   over an SSE stream (`/api/events`), and the SPA reacts in real time.
 
-Degraded behavior when a setting is missing:
+**Programs live in the world, not in the mod:**
 
-- no `secure.http_mods` -> the bridge stays inactive (no polling)
-- no `secure.trusted_mods` -> the bridge runs degraded: listing NPCs,
-  breakpoints and run control still work, but program files cannot be
-  read or executed (boot load is skipped, `load_program` reports an error)
+    <world>/anpc_programs/         (server side; written by IDE, read by bridge)
+        manifest.txt               one program per line:  <program name>  <file name>
+        <file name>                compiled Lua (calls npc.proc.register_program)
+    <world>/anpc_programs_src/      (IDE side: the .anpcscript sources)
 
-### Program files
+`manifest.txt` is the single source of truth for the name → file
+mapping (program names may contain `:`, which is not a legal file name
+on Windows). On boot the bridge reads the manifest and registers every
+listed program, so the world runs exactly whatever the IDE last
+compiled. The backend seeds `anpc_programs_src/` on first run from the
+source paths the compiler stamped into the compiled files.
 
-Programs live in the world, not in the mod:
+**Debugging.** Breakpoints are set by clicking the gutter to the left
+of a source line; the backend converts them to instruction indices with
+the compiler's source map and the server arms them per program. Pausing
+an NPC freezes its process; the debug bar shows the current
+instruction and source line, and *resume* steps over armed breakpoints.
+While paused, the variables bar (⟳ to refresh) dumps that NPC's
+process and global variables. Breakpoints are held *by the server*,
+so they survive browser reloads and IDE restarts; if the server itself
+restarts, the IDE re-arms them from its last known state.
 
-    <world>/anpc_programs/
-        manifest.txt   one program per line:  <program name>  <file name>
-        <file name>    compiled Lua (calls npc.proc.register_program)
+**Instruction catalog.** The `instructions` button in the header opens
+a reference view of every instruction registered by the engine:
+grouped by category (Process, Movement, Environment, Objects,
+Inventory, Timers, Model, Math/Utils, Debug) with a short summary and
+an argument table (name, type, meaning) per instruction. Instructions
+generated by the compiler (jumps, var access, ...) are marked
+*internal*. The catalog is static JSON (`ide/web/instructions.json`),
+so it browses even when the server is not connected.
 
-The IDE owns this directory: it writes `manifest.txt` and the compiled
-files. On boot the bridge reads the manifest and registers every
-listed program, so the world runs whatever the IDE last compiled.
-(Program names contain ':' which is not a legal file name on Windows,
-hence the two-column manifest.)
+### Requirements
+
+- A **Luanti 5.18.0** server (the bridge uses 5.18 APIs: `core.after`,
+  `core.request_insecure_environment`).
+- The **`anpc`** mod plus this mod (`anpc_dev`) in the world's `mods/`
+  folder — `anpc_dev` depends on `anpc`.
+- **Python 3.8+** on the server's machine, stdlib only — no pip
+  installs, no Node/npm, no build step.
+- Any recent browser.
+- The two server settings below.
+
+### Installation
+
+1. **Install the mods.** Put `anpc` and `anpc-dev` in the world's
+   `mods/` directory (the server's global `mods/` or the world's
+   `worldmods/`; the mod name is `anpc_dev`).
+
+2. **Configure the server.** Add both lines to the conf file you pass
+   to `luanti --server` (e.g. `server.conf`):
+
+       secure.http_mods    = anpc_dev
+       secure.trusted_mods = anpc_dev
+
+   - `secure.http_mods` lets the mod make outbound HTTP requests.
+     Luanti has no inbound server sockets, so the bridge *polls* the
+     IDE (`GET /luanti/command` about once per second) and reports back
+     with `POST /luanti/event`.
+   - `secure.trusted_mods` lets the mod obtain the pre-sandbox Lua
+     environment (`core.request_insecure_environment`). That is how it
+     reads the program files from the world directory and executes the
+     compiled code with `load(string)` — both of which the normal mod
+     sandbox blocks.
+
+   Both settings name `anpc_dev` explicitly; no other mod is affected.
+   The trust flag is a real security exception: with it, `anpc_dev` can
+   execute code it reads from the world directory. Keep the world and
+   the IDE on machines you trust with server access.
+
+   Degraded behavior when a setting is missing:
+
+   - no `secure.http_mods` → the bridge stays inactive (no polling)
+   - no `secure.trusted_mods` → the bridge runs degraded: listing NPCs,
+     breakpoints and run control still work, but program files cannot
+     be read or executed (boot load is skipped, `load_program` reports
+     an error)
+
+3. **Start the server** as usual, e.g.
+   `luanti --server <world> --conf server.conf`, and leave it running.
+
+4. **Start the IDE backend** in a separate terminal:
+
+       python <mods>\anpc-dev\ide\anpc_ide.py <path to the world>
+
+   (The path argument selects the world; the default on the reference
+   machine is `C:\Users\hecto\Luanti\worlds\anpc-ai-test`.) It prints
+
+       anpc web IDE on http://127.0.0.1:8765 (world: ...)
+
+   and stays running. On first run it seeds `anpc_programs_src/` from
+   existing compiled programs. It binds `127.0.0.1` only — the IDE is
+   not exposed on the network.
+
+5. **Open** `http://127.0.0.1:8765` in a browser. The header shows the
+   connected world and a green dot once the bridge inside the server
+   has connected.
+
+To stop the IDE: `Ctrl+C` in its terminal. Programs, breakpoints and
+NPC state are unaffected; start it again with the same command to
+resume.
+
+### Using the IDE
+
+**Layout.** Three panels — *programs* (left), *editor* (center),
+*npcs* (right) — plus the event log footer (toggled by the `events`
+button) and a light/dark theme toggle.
+
+- **Create a program.** `+` in the programs panel, enter a name
+  (letters/digits/underscore, optional `:suffix`), `ok`.
+- **Edit & save.** Click a program to open it. The `source` tab is
+  anpcscript with syntax highlighting and the breakpoint gutter; the
+  `compiled` tab shows the compiled Lua. `save` compiles, writes the
+  world files and hot-loads the program into the running server;
+  compiler/save diagnostics appear next to the title.
+- **Run on an NPC.** Select an NPC in the right panel
+  (⟳ refreshes the list — the bridge only reports on request, 5.18 has
+  no periodic poll):
+  - `run` — set the open program as that NPC's *state program* (its
+    main loop) and start it.
+  - `execute` — queue the open program as a one-shot.
+  - `pause` / `resume` / `stop` — freeze, unfreeze, or stop everything
+    (state, queue and current program).
+- **Spawn a test NPC.** `spawn` drops an `anpc_dev:cat` next to you.
+- **Breakpoints.** Click the gutter left of a source line to arm/clear
+  a breakpoint (red dot). They are confirmed by the server (its
+  instruction index is what's armed; missed lines are reported), and
+  they persist across IDE/browser restarts.
+- **Step & inspect.** When an NPC pauses (breakpoint, or `pause`),
+  the debug bar shows its current instruction and source line; `resume`
+  steps over armed breakpoints. The *variables* bar (⟳ refresh) shows
+  the paused NPC's process and global variables.
+- **Delete / duplicate.** Programs with a source file have two per-item
+  buttons: `⧩` duplicate (new name → new file, live-registered) and
+  `✕` delete. Deletion is two-phase: the server must first unregister
+  the program, and if the program is in use by an NPC the delete is
+  refused with the list of NPCs (files untouched). Server-registered
+  programs without a source file are not manageable from the IDE.
+- **Instruction catalog.** The `instructions` header button opens the
+  catalog view: a search box (matches name, summary and argument
+  names), a category filter on the left, and one card per instruction
+  with summary + argument table. `Esc` (or the close button) returns to
+  the editor.
+- **Event log.** The `events` footer (toggle button in the header)
+  shows the recent stream of bridge → backend events — boot, program
+  loads with diagnostics, breakpoint confirmations, pauses, errors —
+  useful for diagnosing what the server saw.
+
+**Compiler & tests.** anpcscript → Lua is `anpc_compiler.py` at the
+mod root (imported by the backend); `test_compiler.py` is its test
+suite (`python test_compiler.py`).
 
 ## Included tools
 ### anpcscript-interpreter
