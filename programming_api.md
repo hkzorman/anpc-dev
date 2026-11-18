@@ -42,6 +42,33 @@ This list is exhaustive of all built-in instructions supported.
   * Arguments:
     * `time`: *number*. The time to wait, in seconds. Decimal values are supported, but it should be taken into account that it should never be smaller than `dtime` (the server's step time). This is not validated.
 
+### Scheduling
+Scheduled interrupts let a program fire when the in-game clock enters a
+time window. All times are on the game-clock scale of `@time`: 0..23999,
+one day = 24000 (1 tick = 1 in-game minute). The engine checks the
+schedule every process step; a firing entry is *preemptive* by default
+(it interrupts the running program, which resumes afterwards).
+
+* `npc:schedule:add`
+  * Adds a schedule entry and returns its id (use it with `npc:schedule:remove` / `npc:schedule:trigger`). The entry fires when the game clock enters the `[earliest, latest)` window (the window may wrap midnight, e.g. `earliest = 20000, latest = 6000`).
+  * Arguments:
+    * `program`: *string*. Name of the program to run when the entry fires. Must be registered (by fire time; a warning is logged at add time if it isn't).
+    * `args`: *table*. Optional arguments passed to the program.
+    * `earliest`: *number*. Start of the firing window. Default 0.
+    * `latest`: *number*. End of the firing window (exclusive). If smaller than `earliest`, the window wraps midnight. Default 24000 (whole day).
+    * `recurrency`: *string*. `"daily"` (re-arm the entry every day, default) or `"none"` (fire once, then the entry is done).
+    * `repeat_interval`: *number*. Game-clock time between repeats inside the window (e.g. 2000 = every ~50 in-game minutes). If omitted, the entry fires at most once per day.
+    * `end_time`: *number*. Game-clock time after which repeats stop (only enforced for non-wrapping windows).
+    * `preemption`: *string*. `"park"` (default) interrupts the running one-shot program - it stays parked in the queue and resumes at the same instruction after the scheduled program finishes; `"tail"` runs the program after everything currently pending; `"replace"` drops pending one-shots and runs it immediately.
+* `npc:schedule:remove`
+  * Removes a schedule entry. Returns `false` for unknown ids and for entries whose program is currently running.
+  * Arguments:
+    * `entry_id`: *number*. Id returned by `npc:schedule:add`.
+* `npc:schedule:trigger`
+  * Forces an entry to fire immediately, bypassing the window check (also re-arms `"done"` entries). Useful for testing and for "do it now" behavior.
+  * Arguments:
+    * `entry_id`: *number*. Id returned by `npc:schedule:add`.
+
 ### Utilities
 * `npc:random`
   * Returns a random number in the given range. Same as Lua's `math.random`
